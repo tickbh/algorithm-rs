@@ -13,7 +13,7 @@ fn main() {
     assert!(words == copy_words);
     println!("{:?}", words); // 输出: ["apple", "banana", "cherry", "date"]
 
-    for i in 0..8 {
+    for i in 8..16 {
         check_sort(i);
     }
     println!("finish check");
@@ -25,6 +25,7 @@ fn check_sort(idx: usize) {
         for _ in 0..idx {
             rands.push(rand::random::<i32>() % 100);
         }
+        rands = vec![8, 7, 5, 4, 6, 3, 1, 2, 9];
         let mut copy_rands = rands.clone();
         rands.sort();
         quicksort(&mut copy_rands, |a, b| a < b);
