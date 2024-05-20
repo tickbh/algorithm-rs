@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
+use rand;
 
-use algorithm::quadsort::tiny_sort;
+use algorithm::quadsort::{quicksort, tiny_sort};
 
 fn main() {
     println!("Hello, world!");
@@ -11,4 +12,27 @@ fn main() {
 
     assert!(words == copy_words);
     println!("{:?}", words); // 输出: ["apple", "banana", "cherry", "date"]
+
+    for i in 0..8 {
+        check_sort(i);
+    }
+    println!("finish check");
+}
+
+fn check_sort(idx: usize) {
+    for _ in 0..100 {
+        let mut rands: Vec<i32> = vec![];
+        for _ in 0..idx {
+            rands.push(rand::random::<i32>() % 100);
+        }
+        let mut copy_rands = rands.clone();
+        rands.sort();
+        quicksort(&mut copy_rands, |a, b| a < b);
+        if rands != copy_rands {
+            println!("rands = {:?}", rands);
+            println!("copy_rands = {:?}", copy_rands);
+        }
+        assert!(rands == copy_rands);
+    }
+
 }
