@@ -11,6 +11,13 @@ macro_rules! try_ex {
     };
 }
 
+pub fn do_change_elem<T>(src: &mut T, dst: &mut T) {
+    // mem::swap(src, dst);
+    unsafe {
+        ptr::copy_nonoverlapping(src, dst, 1);
+    }
+}
+
 
 pub fn try_exchange<T, F>(src: &mut [T], is_less: &F, start: usize, end: usize) -> bool
 where
@@ -48,15 +55,10 @@ where
     T: Debug + Clone
 {
     if is_less(&src[*left], &src[*right]) {
-        // mem::swap(&mut src[*left], &mut swap[*index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*left], &mut swap[*index], 1);
-        }
+        do_change_elem(&mut src[*left], &mut swap[*index]);
         *left += 1;
     } else {
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*right], &mut swap[*index], 1);
-        }
+        do_change_elem(&mut src[*right], &mut swap[*index]);
         *right += 1;
     }
     *index += 1;
@@ -68,16 +70,10 @@ where
     T: Debug + Clone
 {
     if !is_less(&src[*left], &src[*right]) {
-        // mem::swap(&mut src[*left], &mut swap[*index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*left], &mut swap[*index], 1);
-        }
+        do_change_elem(&mut src[*left], &mut swap[*index]);
         *left -= 1;
     } else {
-        // mem::swap(&mut src[*right], &mut swap[*index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*right], &mut swap[*index], 1);
-        }
+        do_change_elem(&mut src[*right], &mut swap[*index]);
         *right -= 1;
     }
     *index -= 1;
@@ -93,29 +89,20 @@ where
     (*left, *right) = (0, 2);
     head_branchless_merge(src, swap, &mut index, left, right, is_less);
     if is_less(&src[*left], &src[*right]) {
-        // mem::swap(&mut src[*left], &mut swap[index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*left], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*left], &mut swap[index]);
     } else {
-        // mem::swap(&mut src[*right], &mut swap[index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*right], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*right], &mut swap[index]);
     }
     index = 3;
     (*left, *right) = (1, 3);
     tail_branchless_merge(src, swap, &mut index, left, right, is_less);
     if !is_less(&src[*left], &src[*right]) {
-        // mem::swap(&mut src[*left], &mut swap[index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*left], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*left], &mut swap[index]);
     } else {
-        // mem::swap(&mut src[*right], &mut swap[index]);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*right], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*right], &mut swap[index]);
+        // unsafe {
+        //     ptr::copy_nonoverlapping(&mut src[*right], &mut swap[index], 1);
+        // }
     }
 
     println!("parity_merge_two src = {:?}", &src[..4]);
@@ -142,17 +129,9 @@ where
     println!("parity_merge_four start 3 src = {:?}", &src[..8]);
     println!("parity_merge_four start 3 swap = {:?}", &swap[..8]);
     if is_less(&src[*left], &src[*right]) {
-        // mem::swap(&mut src[*left], &mut swap[index]);
-        
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*left], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*left], &mut swap[index]);
     } else {
-        // mem::swap(&mut src[*right], &mut swap[index]);
-        
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*right], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*right], &mut swap[index]);
     }
     println!("parity_merge_four start 4 src = {:?}", &src[..8]);
     println!("parity_merge_four start 4 swap = {:?}", &swap[..8]);
@@ -165,17 +144,9 @@ where
     tail_branchless_merge(src, swap, &mut index, left, right, is_less);
     tail_branchless_merge(src, swap, &mut index, left, right, is_less);
     if !is_less(&src[*left], &src[*right]) {
-        // mem::swap(&mut src[*left], &mut swap[index]);
-        
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*left], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*left], &mut swap[index]);
     } else {
-        // mem::swap(&mut src[*right], &mut swap[index]);
-        
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[*right], &mut swap[index], 1);
-        }
+        do_change_elem(&mut src[*right], &mut swap[index]);
     }
     println!("parity_merge_four end src = {:?}", &src[..8]);
     println!("parity_merge_four end swap = {:?}", &swap[..8]);
