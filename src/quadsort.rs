@@ -34,15 +34,19 @@ macro_rules! do_set_elem {
 }
 
 macro_rules! head_branchless_merge {
-    ($src: expr, $swap: expr, $index: expr, $left: expr, $right: expr, $func: expr) => {
-        if check_less!($src, *$left, *$right, $func) {
-            do_set_elem!(&mut $src[*$left], &mut $swap[$index]);
-            *$left += 1;
+    ($dest: expr, $src: expr, $index: expr, $left: expr, $right: expr, $func: expr) => {
+        head_branchless_merge!($dest, $index, $src, $left, $src, $right, $func)
+    };
+
+    ($dest: expr, $di: expr, $array_a: expr, $ai: expr, $array_b: expr, $bi: expr, $func: expr) => {
+        if check_less!($array_a, *$ai, $array_b, *$bi, $func) {
+            do_set_elem!(&mut $array_a[*$ai], &mut $dest[$di]);
+            *$ai += 1;
         } else {
-            do_set_elem!(&mut $src[*$right], &mut $swap[$index]);
-            *$right += 1;
+            do_set_elem!(&mut $array_b[*$bi], &mut $dest[$di]);
+            *$bi += 1;
         }
-        $index += 1;
+        $di += 1;
     };
 }
 
@@ -502,7 +506,7 @@ where
 {
     let mut index = 0;
     (*left, *right) = (0, 2);
-    head_branchless_merge!(src, swap, index, left, right, is_less);
+    head_branchless_merge!(swap, src, index, left, right, is_less);
     // head_branchless_merge(src, swap, &mut index, left, right, is_less);
     println!("left = {}, right = {}, index = {}", left, right, index);
     // head_branchless_merge(src, swap, &mut index, left, right, is_less);
