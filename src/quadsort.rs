@@ -11,8 +11,9 @@ macro_rules! try_ex {
     };
 }
 
-pub fn do_change_elem<T>(src: &mut T, dst: &mut T) {
+pub fn do_change_elem<T: Debug>(src: &mut T, dst: &mut T) {
     // mem::swap(src, dst);
+    println!("src = {:?}, dst = {:?}", src, dst);
     unsafe {
         ptr::copy_nonoverlapping(src, dst, 1);
     }
@@ -79,6 +80,56 @@ where
     *index -= 1;
 }
 
+pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
+where
+    F: Fn(&T, &T) -> bool,
+    T: Debug + Clone
+{
+    println!("start from = {:?}, dest = {:?}", from, dest);
+    let mut ll = 0;
+    let mut lr = ll + *left;
+    let mut dl = 0;
+
+    let mut rl = lr - 1;
+    let mut rr = rl + *right;
+    let mut dr = *left + *right - 1;
+
+    macro_rules! compare_to_next {
+        (true) => {
+            println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
+            if is_less(&from[ll], &from[lr]) {
+                do_change_elem(&mut from[ll], &mut dest[dl]);
+                ll += 1;
+            } else {
+                do_change_elem(&mut from[lr], &mut dest[dl]);
+                lr += 1;
+            }
+            dl += 1;
+        };
+        (false) => {
+            println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
+
+            if !is_less(&from[rl], &from[rr]) {
+                do_change_elem(&mut from[rl], &mut dest[dr]);
+                if rl > 0 { rl -= 1; }
+            } else {
+                do_change_elem(&mut from[rr], &mut dest[dr]);
+                if rr > 0 { rr -= 1; }
+            }
+            if dr > 0 { dr -= 1; }
+        };
+    }
+    
+    if *left < *right {
+        compare_to_next!(true);
+    }
+    while *left > 0 {
+        compare_to_next!(true);
+        compare_to_next!(false);
+        *left -= 1;
+    }
+    println!("end from = {:?}, dest = {:?}", from, dest);
+}
 
 pub fn parity_merge_two<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
 where
@@ -171,6 +222,25 @@ where
     parity_merge_four(swap, src, &mut left, &mut right, is_less);
 }
 
+pub fn parity_swap_sixteen<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
+where
+    F: Fn(&T, &T) -> bool,
+    T: Debug + Clone
+{
+    for i in 0..4 {
+        quad_swap_four(&mut src[i * 4..], &is_less);
+    }
+    if is_less(&src[3], &src[4]) && is_less(&src[7], &src[8]) && is_less(&src[11], &src[12]) {
+        return;
+    }
+
+    let (mut left, mut right) = (0, 0);
+    parity_merge_four(src, swap, &mut left, &mut right, is_less);
+    parity_merge_four(&mut src[8..], &mut swap[8..], &mut left, &mut right, is_less);
+
+    parity_merge(src, swap, &mut 8, &mut 8, is_less);
+}
+
 pub fn tiny_sort<T, F>(src: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -219,31 +289,72 @@ where
     }
 }
 
-pub fn tail_swap<T, F>(src: &mut [T], is_less: &F)
+#[allow(unconditional_recursion)]
+pub fn tail_swap<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
     T: Debug + Clone
 {
+    println!("src len = {:?}", src.len());
     match src.len() {
         l if l < 5 => {
             tiny_sort(src, is_less);
+            return;
         }
         l if l < 8 => {
             quad_swap_four(src, is_less);
             println!("four = {:?}", &src);
             twice_unguarded_insert(src, is_less, 4);
+            return;
         }
         l if l < 12 => {
-            let mut swap = src[..8].to_vec();
-            parity_swap_eight(src, &mut swap, is_less);
+            parity_swap_eight(src, swap, is_less);
             println!("eight swap = {:?}", &swap);
             println!("eight src = {:?}", &src);
             twice_unguarded_insert(src, is_less, 4);
+            return;
+        }
+        l if l >= 16 && l < 24 => {
+            parity_swap_sixteen(src, swap, is_less);
+            println!("eight swap = {:?}", &swap);
+            println!("eight src = {:?}", &src);
+            twice_unguarded_insert(src, is_less, 16);
+            return;
         }
         _ => {
 
         }
     }
+    let mut half1 = src.len() / 2;
+    let mut quad1 = half1 / 2;
+    let mut quad2 = half1 - quad1;
+
+    let mut half2 = src.len() - half1;
+    let mut quad3 = half2 / 2;
+    let mut quad4 = half2 - quad3;
+    
+    let mut index = 0;
+    tail_swap(&mut src[index..index + quad1], swap, is_less);
+    index += quad1;
+    tail_swap(&mut src[index..index + quad2], swap, is_less);
+    index += quad2;
+    tail_swap(&mut src[index..index + quad3], swap, is_less);
+    index += quad3;
+    tail_swap(&mut src[index..index + quad4], swap, is_less);
+
+    if is_less(&src[quad1 - 1], &src[quad1]) 
+    && is_less(&src[half1 - 1], &src[half1]) 
+    && is_less(&src[index - 1], &src[index]) {
+		return;
+    }
+
+    println!("src = {:?}, quad1 = {}, quad2 = {}, quad3 = {}, quad4 = {}", src, quad1, quad2, quad3, quad4);
+
+    parity_merge(swap, src, &mut quad1, &mut quad2, is_less);
+    println!("swap = {:?}, src = {:?}", swap, src);
+
+    parity_merge(&mut swap[half1..], &mut src[half1..], &mut quad3, &mut quad4, is_less);
+    parity_merge(src, swap, &mut half1, &mut half2, is_less);
 }
 
 
@@ -254,7 +365,8 @@ where
 {
     match src.len() {
         l if l < 32 => {
-            tail_swap(src, &is_less);
+            let mut swap = src.to_vec();
+            tail_swap(src,  &mut swap, &is_less);
         }
         _ => {
 
