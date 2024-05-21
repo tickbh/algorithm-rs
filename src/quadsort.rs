@@ -298,7 +298,91 @@ where
     if src.len() == block {
         return;
     }
-    
+
+    let mut ll = block - 1;
+    let mut la = src.len() - 1;
+    if is_less(&src[ll], &src[ll + 1]) {
+        return;
+    }
+
+    let mut lr = la - ll;
+    if src.len() <= swap.len() && lr > 64 {
+        cross_merge(swap, src, block, lr, is_less);
+        unsafe {
+            ptr::copy_nonoverlapping(&mut src[0], &mut swap[0], src.len());
+        }
+        return;
+    }
+    unsafe {
+        ptr::copy_nonoverlapping(&mut swap[0], &mut src[block], lr);
+    }
+    lr -= 1;
+    while ll > 16 && lr > 16 {
+        while is_less(&src[ll], &src[lr - 15]) {
+            for _ in 0..16 {
+                do_change_elem(&mut src[la], &mut swap[lr]);
+                la -= 1;
+                lr -= 1;
+            }
+            if lr <= 16 {
+                break;
+            }
+        }
+
+        while !is_less(&src[ll - 15], &src[lr]) {
+            for _ in 0..16 {
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+                }
+                la -= 1;
+                lr -= 1;
+            }
+            if ll <= 16 {
+                break;
+            }
+        }
+
+        for _ in 0..8 {
+            if is_less(&src[ll], &src[lr - 1]) {
+                for _ in 0..2 {
+                    unsafe {
+                        ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
+                        la -= 1;
+                        lr -= 1;
+                    }
+                }
+            } else if !is_less(&src[ll - 1], &src[lr]) {
+                for _ in 0..2 {
+                    unsafe {
+                        ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+                        la -= 1;
+                        ll -= 1;
+                    }
+                }
+            } else {
+                if is_less(&src[ll], &src[lr]) {
+                    unsafe {
+                        ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
+                        ptr::copy_nonoverlapping(&mut src[la-1], &mut src[ll], 1);
+                        la -= 2;
+                        ll -= 1;
+                        lr -= 1;
+                    }
+                } else {
+                    unsafe {
+                        ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+                        ptr::copy_nonoverlapping(&mut src[la-1], &mut src[lr], 1);
+                        la -= 2;
+                        ll -= 1;
+                        lr -= 1;
+                    }
+                }
+
+                // tail_branchless_merge(&mut src[la..], swap, index, &mut ll, &mut lr, is_less);
+            }
+        }
+    }
+    // todo!()
 }
 
 pub fn tail_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)

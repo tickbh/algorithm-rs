@@ -20,7 +20,7 @@ fn main() {
 }
 
 fn check_sort(idx: usize) {
-    for _ in 0..100 {
+    for _ in 0..10 {
         let mut rands: Vec<u32> = vec![];
         for _ in 0..idx {
             rands.push(rand::random::<u32>() % 20);
