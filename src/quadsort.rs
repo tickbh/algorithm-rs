@@ -11,13 +11,55 @@ macro_rules! try_ex {
     };
 }
 
-pub fn do_change_elem<T: Debug>(src: &mut T, dst: &mut T) {
-    // mem::swap(src, dst);
-    println!("src = {:?}, dst = {:?}", src, dst);
-    unsafe {
-        ptr::copy_nonoverlapping(src, dst, 1);
-    }
+macro_rules! check_less {
+    ($src: expr, $s: expr, $e: expr, $func: expr) => {
+        $func(&$src[$s], &$src[$e])
+    };
+    ($src: expr, $s: expr, $dst: expr, $d: expr, $func: expr) => {
+        $func(&$src[$s], &$dst[$d])
+    };
 }
+
+macro_rules! do_set_elem {
+    ($src: expr, $dst: expr) => {
+        unsafe {
+            ptr::copy_nonoverlapping($src, $dst, 1);
+        }
+    };
+    ($src: expr, $dst: expr, $num: expr) => {
+        unsafe {
+            ptr::copy_nonoverlapping($src, $dst, $num);
+        }
+    };
+}
+
+macro_rules! head_branchless_merge {
+    ($src: expr, $swap: expr, $index: expr, $left: expr, $right: expr, $func: expr) => {
+        if check_less!($src, *$left, *$right, $func) {
+            do_set_elem!(&mut $src[*$left], &mut $swap[$index]);
+            *$left += 1;
+        } else {
+            do_set_elem!(&mut $src[*$right], &mut $swap[$index]);
+            *$right += 1;
+        }
+        $index += 1;
+    };
+}
+
+// pub fn head_branchless_merge<T, F>(src: &mut [T], swap: &mut [T], index: &mut usize, left: &mut usize, right: &mut usize, is_less: &F)
+// where
+//     F: Fn(&T, &T) -> bool,
+//     T: Debug + Clone
+// {
+//     if is_less(&src[*left], &src[*right]) {
+//         do_set_elem!(&mut src[*left], &mut swap[*index]);
+//         *left += 1;
+//     } else {
+//         do_set_elem!(&mut src[*right], &mut swap[*index]);
+//         *right += 1;
+//     }
+//     *index += 1;
+// }
 
 
 pub fn try_exchange<T, F>(src: &mut [T], is_less: &F, start: usize, end: usize) -> bool
@@ -25,8 +67,7 @@ where
     F: Fn(&T, &T) -> bool,
     T: Debug + Clone
 {
-    // println!("起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", start, &src[start], end, &src[end], !is_less(&src[start], &src[end]));
-    if !is_less(&src[start], &src[end]) {
+    if !check_less!(src, start, end, is_less) {
         src.swap(start, end);
         true
     } else {
@@ -91,10 +132,10 @@ where
     T: Debug + Clone
 {
     if is_less(&src[*left], &src[*right]) {
-        do_change_elem(&mut src[*left], &mut swap[*index]);
+        do_set_elem!(&mut src[*left], &mut swap[*index]);
         *left += 1;
     } else {
-        do_change_elem(&mut src[*right], &mut swap[*index]);
+        do_set_elem!(&mut src[*right], &mut swap[*index]);
         *right += 1;
     }
     *index += 1;
@@ -106,10 +147,10 @@ where
     T: Debug + Clone
 {
     if !is_less(&src[*left], &src[*right]) {
-        do_change_elem(&mut src[*left], &mut swap[*index]);
+        do_set_elem!(&mut src[*left], &mut swap[*index]);
         *left -= 1;
     } else {
-        do_change_elem(&mut src[*right], &mut swap[*index]);
+        do_set_elem!(&mut src[*right], &mut swap[*index]);
         *right -= 1;
     }
     *index -= 1;
@@ -133,10 +174,10 @@ where
         (true) => {
             println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
             if is_less(&from[ll], &from[lr]) {
-                do_change_elem(&mut from[ll], &mut dest[dl]);
+                do_set_elem!(&mut from[ll], &mut dest[dl]);
                 ll += 1;
             } else {
-                do_change_elem(&mut from[lr], &mut dest[dl]);
+                do_set_elem!(&mut from[lr], &mut dest[dl]);
                 lr += 1;
             }
             dl += 1;
@@ -145,10 +186,10 @@ where
             println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
 
             if !is_less(&from[rl], &from[rr]) {
-                do_change_elem(&mut from[rl], &mut dest[dr]);
+                do_set_elem!(&mut from[rl], &mut dest[dr]);
                 if rl > 0 { rl -= 1; }
             } else {
-                do_change_elem(&mut from[rr], &mut dest[dr]);
+                do_set_elem!(&mut from[rr], &mut dest[dr]);
                 if rr > 0 { rr -= 1; }
             }
             if dr > 0 { dr -= 1; }
@@ -194,10 +235,10 @@ where
         (true) => {
             println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
             if is_less(&from[ll], &from[lr]) {
-                do_change_elem(&mut from[ll], &mut dest[dl]);
+                do_set_elem!(&mut from[ll], &mut dest[dl]);
                 ll += 1;
             } else {
-                do_change_elem(&mut from[lr], &mut dest[dl]);
+                do_set_elem!(&mut from[lr], &mut dest[dl]);
                 lr += 1;
             }
             dl += 1;
@@ -206,10 +247,10 @@ where
             println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
 
             if !is_less(&from[rl], &from[rr]) {
-                do_change_elem(&mut from[rl], &mut dest[dr]);
+                do_set_elem!(&mut from[rl], &mut dest[dr]);
                 if rl > 0 { rl -= 1; }
             } else {
-                do_change_elem(&mut from[rr], &mut dest[dr]);
+                do_set_elem!(&mut from[rr], &mut dest[dr]);
                 if rr > 0 { rr -= 1; }
             }
             if dr > 0 { dr -= 1; }
@@ -273,7 +314,7 @@ where
             compare_to_next!(true);
         }
         while lr <= rr {
-            do_change_elem(&mut from[lr], &mut dest[dl]);
+            do_set_elem!(&mut from[lr], &mut dest[dl]);
             lr += 1;
             dl += 1;
         }
@@ -282,7 +323,7 @@ where
             compare_to_next!(true);
         }
         while ll <= rl {
-            do_change_elem(&mut from[ll], &mut dest[dl]);
+            do_set_elem!(&mut from[ll], &mut dest[dl]);
             ll += 1;
             dl += 1;
         }
@@ -320,7 +361,7 @@ where
     while ll > 16 && lr > 16 {
         while is_less(&src[ll], &src[lr - 15]) {
             for _ in 0..16 {
-                do_change_elem(&mut src[la], &mut swap[lr]);
+                do_set_elem!(&mut src[la], &mut swap[lr]);
                 la -= 1;
                 lr -= 1;
             }
@@ -378,7 +419,7 @@ where
                     }
                 }
 
-                // tail_branchless_merge(&mut src[la..], swap, index, &mut ll, &mut lr, is_less);
+                tail_branchless_merge(src, swap, &mut la, &mut ll, &mut lr, is_less);
             }
         }
     }
@@ -461,19 +502,22 @@ where
 {
     let mut index = 0;
     (*left, *right) = (0, 2);
-    head_branchless_merge(src, swap, &mut index, left, right, is_less);
+    head_branchless_merge!(src, swap, index, left, right, is_less);
+    // head_branchless_merge(src, swap, &mut index, left, right, is_less);
+    println!("left = {}, right = {}, index = {}", left, right, index);
+    // head_branchless_merge(src, swap, &mut index, left, right, is_less);
     if is_less(&src[*left], &src[*right]) {
-        do_change_elem(&mut src[*left], &mut swap[index]);
+        do_set_elem!(&mut src[*left], &mut swap[index]);
     } else {
-        do_change_elem(&mut src[*right], &mut swap[index]);
+        do_set_elem!(&mut src[*right], &mut swap[index]);
     }
     index = 3;
     (*left, *right) = (1, 3);
     tail_branchless_merge(src, swap, &mut index, left, right, is_less);
     if !is_less(&src[*left], &src[*right]) {
-        do_change_elem(&mut src[*left], &mut swap[index]);
+        do_set_elem!(&mut src[*left], &mut swap[index]);
     } else {
-        do_change_elem(&mut src[*right], &mut swap[index]);
+        do_set_elem!(&mut src[*right], &mut swap[index]);
         // unsafe {
         //     ptr::copy_nonoverlapping(&mut src[*right], &mut swap[index], 1);
         // }
@@ -503,9 +547,9 @@ where
     println!("parity_merge_four start 3 src = {:?}", &src[..8]);
     println!("parity_merge_four start 3 swap = {:?}", &swap[..8]);
     if is_less(&src[*left], &src[*right]) {
-        do_change_elem(&mut src[*left], &mut swap[index]);
+        do_set_elem!(&mut src[*left], &mut swap[index]);
     } else {
-        do_change_elem(&mut src[*right], &mut swap[index]);
+        do_set_elem!(&mut src[*right], &mut swap[index]);
     }
     println!("parity_merge_four start 4 src = {:?}", &src[..8]);
     println!("parity_merge_four start 4 swap = {:?}", &swap[..8]);
@@ -518,9 +562,9 @@ where
     tail_branchless_merge(src, swap, &mut index, left, right, is_less);
     tail_branchless_merge(src, swap, &mut index, left, right, is_less);
     if !is_less(&src[*left], &src[*right]) {
-        do_change_elem(&mut src[*left], &mut swap[index]);
+        do_set_elem!(&mut src[*left], &mut swap[index]);
     } else {
-        do_change_elem(&mut src[*right], &mut swap[index]);
+        do_set_elem!(&mut src[*right], &mut swap[index]);
     }
     println!("parity_merge_four end src = {:?}", &src[..8]);
     println!("parity_merge_four end swap = {:?}", &swap[..8]);
