@@ -614,6 +614,24 @@ where
     F: Fn(&T, &T) -> bool
 {
     let mut index = 0;
+    // (*left, *right) = (0, 4);
+    // while *left < 4 && *right < 8 {
+    //     if check_less!(src, *left, *right, is_less) {
+    //         do_set_elem!(&mut src[*left], &mut swap[index]);
+    //         *left += 1;
+    //     } else {
+    //         do_set_elem!(&mut src[*right], &mut swap[index]);
+    //         *right += 1;
+    //     }
+    //     index += 1;
+    // }
+
+    // if *left < 4 {
+    //     do_set_elem!(&mut src[*left], &mut swap[index], 4 - *left);
+    // } else if *right < 8 {
+    //     do_set_elem!(&mut src[*right], &mut swap[index], 8 - *right);
+    // }
+
     (*left, *right) = (0, 4);
     for _ in 0..4 {
         head_branchless_merge!(swap, src, index, left, right, is_less);
