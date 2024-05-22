@@ -208,389 +208,381 @@ impl<T, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
         }
     }
 
-// #[inline]
-// pub fn cross_merge(dest: &mut [T], from: &mut [T], left: usize, right: usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     let mut ll = 0;
-//     let mut lr = ll + left;
+    #[inline]
+    pub fn cross_merge(&mut self, dest: &mut [T], from: &mut [T], left: usize, right: usize)
+    where
+        F: Fn(&T, &T) -> bool
+    {
+        let mut ll = 0;
+        let mut lr = ll + left;
 
-//     let mut rl = lr - 1;
-//     let mut rr = rl + right;
+        let mut rl = lr - 1;
+        let mut rr = rl + right;
 
-// 	// if left + 1 >= right && right + 1 >= left && left >= 32
-// 	// {
-// 		// if (cmp(ptl + 15, ptr) > 0 && cmp(ptl, ptr + 15) <= 0 && cmp(tpl, tpr - 15) > 0 && cmp(tpl - 15, tpr) <= 0)
-// 		// {
-// 		// 	parity_merge(dest, from, left, right, cmp);
-// 		// 	return;
-// 		// }
-// 	// }
+        // if left + 1 >= right && right + 1 >= left && left >= 32
+        // {
+            // if (cmp(ptl + 15, ptr) > 0 && cmp(ptl, ptr + 15) <= 0 && cmp(tpl, tpr - 15) > 0 && cmp(tpl - 15, tpr) <= 0)
+            // {
+            // 	parity_merge(dest, from, left, right, cmp);
+            // 	return;
+            // }
+        // }
 
-//     let mut dl = 0;
-//     let mut dr = left + right - 1;
-    
-//     macro_rules! compare_to_next {
-//         (true) => {
-//             // println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
-//             if !check_big!(from, ll, lr, is_less) {
-//                 do_set_elem!(&mut from[ll], &mut dest[dl]);
-//                 ll += 1;
-//             } else {
-//                 do_set_elem!(&mut from[lr], &mut dest[dl]);
-//                 lr += 1;
-//             }
-//             dl += 1;
-//         };
-//         (false) => {
-//             // println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
-
-//             if !is_less(&from[rl], &from[rr]) {
-//                 do_set_elem!(&mut from[rl], &mut dest[dr]);
-//                 if rl > 0 { rl -= 1; }
-//             } else {
-//                 do_set_elem!(&mut from[rr], &mut dest[dr]);
-//                 if rr > 0 { rr -= 1; }
-//             }
-//             if dr > 0 { dr -= 1; }
-//         };
-//     }
-
-//     'outer: while rl > ll && rl - ll > 8 && rr > lr && rr - lr > 8 {
-//         while check_less!(from, ll + 7, lr, is_less) {
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut from[ll], &mut dest[dl], 8);
-//             }
-//             dl += 8;
-//             ll += 8;
-//             if rl < ll || rl - ll <= 8 {
-//                 break 'outer;
-//             }
-//         }
-
-//         while check_big!(from, ll, lr + 7, is_less) {
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut from[lr], &mut dest[dl], 8);
-//             }
-//             dl += 8;
-//             lr += 8;
-//             if rr < lr || rr - lr <= 8 {
-//                 break 'outer;
-//             }
-//         }
+        let mut dl = 0;
+        let mut dr = left + right - 1;
         
-//         while check_less!(from, rl, rr - 7, is_less) {
-//             dr -= 8;
-//             rr -= 8;
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut from[rr + 1], &mut dest[dr + 1], 8);
-//             }
-//             if rr < lr || rr - lr <= 8 {
-//                 break 'outer;
-//             }
-//         }
+        macro_rules! compare_to_next {
+            (true) => {
+                // println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
+                if !check_big!(from, ll, lr, self.is_less) {
+                    do_set_elem!(&mut from[ll], &mut dest[dl]);
+                    ll += 1;
+                } else {
+                    do_set_elem!(&mut from[lr], &mut dest[dl]);
+                    lr += 1;
+                }
+                dl += 1;
+            };
+            (false) => {
+                // println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
 
-        
-//         while check_big!(from, rl - 7, rr, is_less) {
-//             dr -= 8;
-//             rl -= 8;
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut from[rl + 1], &mut dest[dr + 1], 8);
-//             }
-//             if rl < ll || rl - ll <= 8 {
-//                 break 'outer;
-//             }
-//         }
+                if !(self.is_less)(&from[rl], &from[rr]) {
+                    do_set_elem!(&mut from[rl], &mut dest[dr]);
+                    if rl > 0 { rl -= 1; }
+                } else {
+                    do_set_elem!(&mut from[rr], &mut dest[dr]);
+                    if rr > 0 { rr -= 1; }
+                }
+                if dr > 0 { dr -= 1; }
+            };
+        }
 
-//         for _ in 0..8 {
-//             compare_to_next!(true);
-//             compare_to_next!(false);
-//         }
-//     }
+        'outer: while rl > ll && rl - ll > 8 && rr > lr && rr - lr > 8 {
+            while check_less!(from, ll + 7, lr, self.is_less) {
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut from[ll], &mut dest[dl], 8);
+                }
+                dl += 8;
+                ll += 8;
+                if rl < ll || rl - ll <= 8 {
+                    break 'outer;
+                }
+            }
 
-//     if is_less(&from[rl], &from[rr])  {
-//         while ll <= rl {
-//             compare_to_next!(true);
-//         }
-//         while lr <= rr {
-//             do_set_elem!(&mut from[lr], &mut dest[dl]);
-//             lr += 1;
-//             dl += 1;
-//         }
-//     } else {
-//         while lr <= rr {
-//             compare_to_next!(true);
-//         }
-//         while ll <= rl {
-//             do_set_elem!(&mut from[ll], &mut dest[dl]);
-//             ll += 1;
-//             dl += 1;
-//         }
-//     }
-// }
-
-// #[inline]
-// pub fn partial_backward_merge(src: &mut [T], swap: &mut [T], block: usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     if src.len() <= block {
-//         return;
-//     }
-//     let mut ll = 0;
-//     let mut rl = block;
-//     if check_less!(src, rl - 1, rl, is_less) {
-//         return;
-//     }
-
-//     let mut index = 0;
-//     let len = src.len();
-//     while ll < block && rl < len {
-//         head_branchless_merge!(swap, src, index, &mut ll, &mut rl, is_less);
-//     }
-
-//     if ll < block {
-//         do_set_elem!(&mut src[ll], &mut swap[index], block - ll);
-//     } else if rl < len {
-//         do_set_elem!(&mut src[rl], &mut swap[index], len - rl);
-//     }
-
-//     do_set_elem!(&mut swap[0], &mut src[0], len);
-
-//     //
-//     // let mut ll = block - 1;
-//     // let mut la = src.len() - 1;
-//     // if is_less(&src[ll], &src[ll + 1]) {
-//     //     return;
-//     // }
-//     //
-//     // let mut lr = la - ll;
-//     // if src.len() <= swap.len() && lr > 64 {
-//     //     cross_merge(swap, src, block, lr, is_less);
-//     //     unsafe {
-//     //         ptr::copy_nonoverlapping(&mut src[0], &mut swap[0], src.len());
-//     //     }
-//     //     return;
-//     // }
-//     // unsafe {
-//     //     ptr::copy_nonoverlapping(&mut swap[0], &mut src[block], lr);
-//     // }
-//     // lr -= 1;
-//     // while ll > 16 && lr > 16 {
-//     //     while is_less(&src[ll], &src[lr - 15]) {
-//     //         for _ in 0..16 {
-//     //             do_set_elem!(&mut src[la], &mut swap[lr]);
-//     //             la -= 1;
-//     //             lr -= 1;
-//     //         }
-//     //         if lr <= 16 {
-//     //             break;
-//     //         }
-//     //     }
-//     //
-//     //     while !is_less(&src[ll - 15], &src[lr]) {
-//     //         for _ in 0..16 {
-//     //             unsafe {
-//     //                 ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
-//     //             }
-//     //             la -= 1;
-//     //             lr -= 1;
-//     //         }
-//     //         if ll <= 16 {
-//     //             break;
-//     //         }
-//     //     }
-//     //
-//     //     for _ in 0..8 {
-//     //         if is_less(&src[ll], &src[lr - 1]) {
-//     //             for _ in 0..2 {
-//     //                 unsafe {
-//     //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
-//     //                     la -= 1;
-//     //                     lr -= 1;
-//     //                 }
-//     //             }
-//     //         } else if !is_less(&src[ll - 1], &src[lr]) {
-//     //             for _ in 0..2 {
-//     //                 unsafe {
-//     //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
-//     //                     la -= 1;
-//     //                     ll -= 1;
-//     //                 }
-//     //             }
-//     //         } else {
-//     //             if is_less(&src[ll], &src[lr]) {
-//     //                 unsafe {
-//     //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
-//     //                     ptr::copy_nonoverlapping(&mut src[la-1], &mut src[ll], 1);
-//     //                     la -= 2;
-//     //                     ll -= 1;
-//     //                     lr -= 1;
-//     //                 }
-//     //             } else {
-//     //                 unsafe {
-//     //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
-//     //                     ptr::copy_nonoverlapping(&mut src[la-1], &mut src[lr], 1);
-//     //                     la -= 2;
-//     //                     ll -= 1;
-//     //                     lr -= 1;
-//     //                 }
-//     //             }
-//     //
-//     //             tail_branchless_merge!(src, la, src, &mut ll, swap, &mut lr, is_less);
-//     //         }
-//     //     }
-//     // }
-//     // // todo!()
-// }
-
-// #[inline]
-// pub fn tail_merge(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     let len = src.len();
-//     let swap_len = swap.len();
-//     while block < len && block < swap_len {
-//         for idx in (0..len).step_by(block * 2) {
-//             if idx + block * 2 < len {
-//                 partial_backward_merge(&mut src[idx..idx+block * 2], swap, block, is_less);
-//                 continue;
-//             }
-//             partial_backward_merge(&mut src[idx..], swap, block, is_less);
-//             break;
-//         }
-
-//         block *= 2;
-//     }
-// }
-
-// #[inline]
-// pub fn quad_merge_block(src: &mut [T], swap: &mut [T], block: usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     let block1 = block;
-//     let block2 = block1 + block;
-//     let block3 = block2 + block;
-//     match (is_less(&src[block1 - 1], &src[block1]), is_less(&src[block3 - 1], &src[block3])) {
-//         (true, true) => {
-//             if is_less(&src[block2 - 1], &src[block2]) {
-//                 return;
-//             }
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut swap[0], &mut src[0], block * 4);
-//             }
-//         },
-//         (false, true) => {
-//             cross_merge(swap, src, block, block, is_less);
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut swap[block2], &mut src[block2], block2);
-//             }
-//         },
-//         (true, false) => {
-//             unsafe {
-//                 ptr::copy_nonoverlapping(&mut swap[0], &mut src[0], block2);
-//             }
-//             cross_merge(&mut swap[block2..], &mut src[block2..], block, block, is_less);
-//         },
-//         (false, false) => {
-//             cross_merge(swap, src, block, block, is_less);
-//             cross_merge(&mut swap[block2..], &mut src[block2..], block, block, is_less);
-//         },
-//     }
-//     cross_merge(src, swap, block2, block2, is_less);
-// }
-
-
-// #[inline]
-// pub fn quad_merge(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F) -> usize
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     let len = src.len();
-//     let swap_len = swap.len();
-//     block *= 4;
-//     while block < len && block < swap_len {
-//         let mut index = 0;
-//         loop {
-//             quad_merge_block(&mut src[index..], swap, block / 4, is_less);
-//             index += block;
-//             if index + block > len {
-//                 break;
-//             }
-//         }
-//         tail_merge(&mut src[index..], swap, block / 4, is_less);
-// 		block *= 4;
-//     }
-//     tail_merge(src, swap, block / 4, is_less);
-//     block / 2
-// }
-
-// #[inline]
-// pub fn monobound_binary_first(src: &mut [T], right: usize, left: usize, mut top: usize, is_less: &F) -> usize
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     let mut end = right + top;
-//     while top > 1 {
-//         let mid = top / 2;
-//         if check_less!(src, left, end - mid, is_less) {
-//             end -= mid;
-//         }
-//         top -= mid;
-//     }
-
-//     if check_less!(src, left, end - 1, is_less) {
-//         end -= 1;
-//     }
-//     return end - left
-// }
-
-// #[inline]
-// pub fn rotate_merge_block(src: &mut [T], swap: &mut [T], mut lblock: usize, mut right: usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     if check_less!(src, lblock - 1, lblock, is_less) {
-//         return;
-//     }
-//     let mut rblock = lblock / 2;
-//     lblock -= rblock;
-//     let left = monobound_binary_first(src, lblock + rblock, lblock, right, is_less);
-//     right -= left;
-    
-//     if left > 0 {
-//         if lblock + left < swap.len() {
+            while check_big!(from, ll, lr + 7, self.is_less) {
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut from[lr], &mut dest[dl], 8);
+                }
+                dl += 8;
+                lr += 8;
+                if rr < lr || rr - lr <= 8 {
+                    break 'outer;
+                }
+            }
             
-//         }
-//     }
-// 	// [ lblock ] [ rblock ] [ left ] [ right ]
-// }
+            while check_less!(from, rl, rr - 7, self.is_less) {
+                dr -= 8;
+                rr -= 8;
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut from[rr + 1], &mut dest[dr + 1], 8);
+                }
+                if rr < lr || rr - lr <= 8 {
+                    break 'outer;
+                }
+            }
 
-// #[inline]
-// pub fn rotate_merge(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool
-// {
-//     let len = src.len();
-//     if len <= block * 2 && len > block && len - block <= swap.len() {
-//         partial_backward_merge(src, swap, block, is_less);
-//         return;
-//     }
-//     // while block < len {
-//     //     for i in (0..len).step_by(block * 2) {
-//     //         if i + block * 2 < len {
-//     //             rotate_merge_block(&mut src[i..], swap, block, block, is_less);
-//     //             continue;
-//     //         }
-//     //         rotate_merge_block(&mut src[i..], swap, block, len - i - block, is_less);
-//     //         break;
-//     //     }
-// 	// 	block *= 2;
-//     // }
-// }
+            
+            while check_big!(from, rl - 7, rr, self.is_less) {
+                dr -= 8;
+                rl -= 8;
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut from[rl + 1], &mut dest[dr + 1], 8);
+                }
+                if rl < ll || rl - ll <= 8 {
+                    break 'outer;
+                }
+            }
+
+            for _ in 0..8 {
+                compare_to_next!(true);
+                compare_to_next!(false);
+            }
+        }
+
+        if (self.is_less)(&from[rl], &from[rr])  {
+            while ll <= rl {
+                compare_to_next!(true);
+            }
+            while lr <= rr {
+                do_set_elem!(&mut from[lr], &mut dest[dl]);
+                lr += 1;
+                dl += 1;
+            }
+        } else {
+            while lr <= rr {
+                compare_to_next!(true);
+            }
+            while ll <= rl {
+                do_set_elem!(&mut from[ll], &mut dest[dl]);
+                ll += 1;
+                dl += 1;
+            }
+        }
+    }
+
+    #[inline]
+    pub fn partial_backward_merge(&mut self, src: &mut [T], swap: &mut [T], block: usize)
+    where
+        F: Fn(&T, &T) -> bool
+    {
+        if src.len() <= block {
+            return;
+        }
+        let mut ll = 0;
+        let mut rl = block;
+        if check_less!(src, rl - 1, rl, self.is_less) {
+            return;
+        }
+
+        let mut index = 0;
+        let len = src.len();
+        while ll < block && rl < len {
+            head_branchless_merge!(swap, src, index, ll, rl, self.is_less);
+        }
+
+        if ll < block {
+            do_set_elem!(&mut src[ll], &mut swap[index], block - ll);
+        } else if rl < len {
+            do_set_elem!(&mut src[rl], &mut swap[index], len - rl);
+        }
+
+        do_set_elem!(&mut swap[0], &mut src[0], len);
+
+        //
+        // let mut ll = block - 1;
+        // let mut la = src.len() - 1;
+        // if is_less(&src[ll], &src[ll + 1]) {
+        //     return;
+        // }
+        //
+        // let mut lr = la - ll;
+        // if src.len() <= swap.len() && lr > 64 {
+        //     cross_merge(swap, src, block, lr, is_less);
+        //     unsafe {
+        //         ptr::copy_nonoverlapping(&mut src[0], &mut swap[0], src.len());
+        //     }
+        //     return;
+        // }
+        // unsafe {
+        //     ptr::copy_nonoverlapping(&mut swap[0], &mut src[block], lr);
+        // }
+        // lr -= 1;
+        // while ll > 16 && lr > 16 {
+        //     while is_less(&src[ll], &src[lr - 15]) {
+        //         for _ in 0..16 {
+        //             do_set_elem!(&mut src[la], &mut swap[lr]);
+        //             la -= 1;
+        //             lr -= 1;
+        //         }
+        //         if lr <= 16 {
+        //             break;
+        //         }
+        //     }
+        //
+        //     while !is_less(&src[ll - 15], &src[lr]) {
+        //         for _ in 0..16 {
+        //             unsafe {
+        //                 ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+        //             }
+        //             la -= 1;
+        //             lr -= 1;
+        //         }
+        //         if ll <= 16 {
+        //             break;
+        //         }
+        //     }
+        //
+        //     for _ in 0..8 {
+        //         if is_less(&src[ll], &src[lr - 1]) {
+        //             for _ in 0..2 {
+        //                 unsafe {
+        //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
+        //                     la -= 1;
+        //                     lr -= 1;
+        //                 }
+        //             }
+        //         } else if !is_less(&src[ll - 1], &src[lr]) {
+        //             for _ in 0..2 {
+        //                 unsafe {
+        //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+        //                     la -= 1;
+        //                     ll -= 1;
+        //                 }
+        //             }
+        //         } else {
+        //             if is_less(&src[ll], &src[lr]) {
+        //                 unsafe {
+        //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
+        //                     ptr::copy_nonoverlapping(&mut src[la-1], &mut src[ll], 1);
+        //                     la -= 2;
+        //                     ll -= 1;
+        //                     lr -= 1;
+        //                 }
+        //             } else {
+        //                 unsafe {
+        //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+        //                     ptr::copy_nonoverlapping(&mut src[la-1], &mut src[lr], 1);
+        //                     la -= 2;
+        //                     ll -= 1;
+        //                     lr -= 1;
+        //                 }
+        //             }
+        //
+        //             tail_branchless_merge!(src, la, src, &mut ll, swap, &mut lr, is_less);
+        //         }
+        //     }
+        // }
+        // // todo!()
+    }
+
+    #[inline]
+    pub fn tail_merge(&mut self, src: &mut [T], swap: &mut [T], mut block: usize)
+    where
+        F: Fn(&T, &T) -> bool
+    {
+        let len = src.len();
+        let swap_len = swap.len();
+        while block < len && block < swap_len {
+            for idx in (0..len).step_by(block * 2) {
+                if idx + block * 2 < len {
+                    self.partial_backward_merge(&mut src[idx..idx+block * 2], swap, block);
+                    continue;
+                }
+                self.partial_backward_merge(&mut src[idx..], swap, block);
+                break;
+            }
+
+            block *= 2;
+        }
+    }
+
+    #[inline]
+    pub fn quad_merge_block(&mut self, src: &mut [T], swap: &mut [T], block: usize)
+    where
+        F: Fn(&T, &T) -> bool
+    {
+        let block1 = block;
+        let block2 = block1 + block;
+        let block3 = block2 + block;
+        match ((self.is_less)(&src[block1 - 1], &src[block1]), (self.is_less)(&src[block3 - 1], &src[block3])) {
+            (true, true) => {
+                if (self.is_less)(&src[block2 - 1], &src[block2]) {
+                    return;
+                }
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut swap[0], &mut src[0], block * 4);
+                }
+            },
+            (false, true) => {
+                self.cross_merge(swap, src, block, block);
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut swap[block2], &mut src[block2], block2);
+                }
+            },
+            (true, false) => {
+                unsafe {
+                    ptr::copy_nonoverlapping(&mut swap[0], &mut src[0], block2);
+                }
+                self.cross_merge(&mut swap[block2..], &mut src[block2..], block, block);
+            },
+            (false, false) => {
+                self.cross_merge(swap, src, block, block);
+                self.cross_merge(&mut swap[block2..], &mut src[block2..], block, block);
+            },
+        }
+        self.cross_merge(src, swap, block2, block2);
+    }
+
+
+    #[inline]
+    pub fn quad_merge(&mut self, src: &mut [T], swap: &mut [T], mut block: usize) -> usize
+    {
+        let len = src.len();
+        let swap_len = swap.len();
+        block *= 4;
+        while block < len && block < swap_len {
+            let mut index = 0;
+            loop {
+                self.quad_merge_block(&mut src[index..], swap, block / 4);
+                index += block;
+                if index + block > len {
+                    break;
+                }
+            }
+            self.tail_merge(&mut src[index..], swap, block / 4);
+            block *= 4;
+        }
+        self.tail_merge(src, swap, block / 4);
+        block / 2
+    }
+
+    #[inline]
+    pub fn monobound_binary_first(&mut self, src: &mut [T], right: usize, left: usize, mut top: usize) -> usize
+    {
+        let mut end = right + top;
+        while top > 1 {
+            let mid = top / 2;
+            if check_less!(src, left, end - mid, self.is_less) {
+                end -= mid;
+            }
+            top -= mid;
+        }
+
+        if check_less!(src, left, end - 1, self.is_less) {
+            end -= 1;
+        }
+        return end - left
+    }
+
+    #[inline]
+    pub fn rotate_merge_block(&mut self, src: &mut [T], swap: &mut [T], mut lblock: usize, mut right: usize)
+    {
+        if check_less!(src, lblock - 1, lblock, self.is_less) {
+            return;
+        }
+        let mut rblock = lblock / 2;
+        lblock -= rblock;
+        let left = self.monobound_binary_first(src, lblock + rblock, lblock, right);
+        right -= left;
+        
+        if left > 0 {
+            if lblock + left < swap.len() {
+                
+            }
+        }
+        // [ lblock ] [ rblock ] [ left ] [ right ]
+    }
+
+    #[inline]
+    pub fn rotate_merge(&mut self, src: &mut [T], swap: &mut [T], mut block: usize)
+    {
+        let len = src.len();
+        if len <= block * 2 && len > block && len - block <= swap.len() {
+            self.partial_backward_merge(src, swap, block);
+            return;
+        }
+        // while block < len {
+        //     for i in (0..len).step_by(block * 2) {
+        //         if i + block * 2 < len {
+        //             rotate_merge_block(&mut src[i..], swap, block, block, is_less);
+        //             continue;
+        //         }
+        //         rotate_merge_block(&mut src[i..], swap, block, len - i - block, is_less);
+        //         break;
+        //     }
+        // 	block *= 2;
+        // }
+    }
 
     #[inline]
     pub fn parity_merge_two(&mut self, src: &mut [T], swap: &mut [T])
@@ -846,8 +838,8 @@ impl<T, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
                 //     rotate_merge(src, &mut swap[..32], 64, &is_less);
                 //     return;
                 // }
-                // let block = self.quad_merge(src, &mut swap, 32);
-                // self.rotate_merge(src, &mut swap, block);
+                let block = self.quad_merge(src, &mut swap, 32);
+                self.rotate_merge(src, &mut swap, block);
                 // Vec::from_raw_parts(ptr, length, capacity)
                 // Vec::with_capacity(capacity)
             }
