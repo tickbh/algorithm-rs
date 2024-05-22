@@ -23,12 +23,9 @@ fn main() {
     // }
     let mut cost_sort_time = 0;
     let mut cost_quad_time = 0;
-    for i in 1..1999 {
+    for i in 1..2999 {
         check_sort(i, &mut cost_sort_time, &mut cost_quad_time);
     }
-    // for i in 1..32 {
-    //     check_sort(i);
-    // }
 
     println!("cost sort time = {:?} cost quad time = {:?}", cost_sort_time, cost_quad_time);
 

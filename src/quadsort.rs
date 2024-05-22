@@ -1,15 +1,5 @@
-use std::{alloc::{alloc, Layout}, fmt::Debug, mem::{self, MaybeUninit}, ops::Range, ptr};
+use std::{alloc::{self, Layout}, fmt::Debug, mem::{self, MaybeUninit}, ops::Range, ptr};
 
-macro_rules! try_ex {
-    ($start: expr, $end: expr) => {
-        if !is_less(&v[$start], &v[$end]) {
-            v.swap($start, $end);
-            true
-        } else {
-            false
-        }
-    };
-}
 
 macro_rules! check_less {
     ($src: expr, $s: expr, $e: expr, $func: expr) => {
@@ -77,18 +67,15 @@ macro_rules! tail_branchless_merge {
     };
 }
 
-#[inline]
-pub fn try_exchange<T, F>(src: &mut [T], is_less: &F, start: usize, end: usize) -> bool
-where
-    F: Fn(&T, &T) -> bool,
-    T: Debug
-{
-    if !check_less!(src, start, end, is_less) {
-        src.swap(start, end);
-        true
-    } else {
-        false
-    }
+macro_rules! try_exchange {
+    ($src: expr, $func: expr, $start: expr, $end: expr) => {
+        if check_big!($src, $start, $end, $func) {
+            $src.swap($start, $end);
+            true
+        } else {
+            false
+        }
+    };
 }
 
 #[inline]
@@ -97,19 +84,19 @@ where
     F: Fn(&T, &T) -> bool,
     T: Debug
 {
-    try_exchange(src, &is_less, 0, 1);
-    try_exchange(src, &is_less, 2, 3);
+    try_exchange!(src, &is_less, 0, 1);
+    try_exchange!(src, &is_less, 2, 3);
     // 中间顺序正确则表示排序完毕
-    if try_exchange(src, &is_less, 1, 2) {
-        try_exchange(src, &is_less, 0, 1);
-        if try_exchange(src, &is_less, 2, 3) {
-            try_exchange(src, &is_less, 1, 2);
+    if try_exchange!(src, &is_less, 1, 2) {
+        try_exchange!(src, &is_less, 0, 1);
+        if try_exchange!(src, &is_less, 2, 3) {
+            try_exchange!(src, &is_less, 1, 2);
         }
     }
 }
 
-
-pub fn parity_swap_thirtytwo<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
+#[inline]
+pub fn parity_swap_thirty_two<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
     T: Debug
@@ -136,7 +123,7 @@ where
     let len = src.len();
     let count = len / 32;
     for i in 0..count {
-        parity_swap_thirtytwo(&mut src[i * 32..], &mut swap, &is_less);
+        parity_swap_thirty_two(&mut src[i * 32..], &mut swap, &is_less);
     }
     let left = len % 32;
     if left > 0 {
@@ -159,6 +146,7 @@ where
 //     *index -= 1;
 // }
 
+#[inline]
 pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], mut left: usize, mut right: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -208,7 +196,7 @@ where
     }
 }
 
-
+#[inline]
 pub fn cross_merge<T, F>(dest: &mut [T], from: &mut [T], left: usize, right: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -331,7 +319,7 @@ where
     }
 }
 
-
+#[inline]
 pub fn partial_backward_merge<T, F>(src: &mut [T], swap: &mut [T], block: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -447,6 +435,7 @@ where
     // // todo!()
 }
 
+#[inline]
 pub fn tail_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -468,7 +457,7 @@ where
     }
 }
 
-
+#[inline]
 pub fn quad_merge_block<T, F>(src: &mut [T], swap: &mut [T], block: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -507,7 +496,7 @@ where
 }
 
 
-
+#[inline]
 pub fn quad_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F) -> usize
 where
     F: Fn(&T, &T) -> bool,
@@ -532,6 +521,7 @@ where
     block / 2
 }
 
+#[inline]
 pub fn monobound_binary_first<T, F>(src: &mut [T], right: usize, left: usize, mut top: usize, is_less: &F) -> usize
 where
     F: Fn(&T, &T) -> bool,
@@ -552,6 +542,7 @@ where
     return end - left
 }
 
+#[inline]
 pub fn rotate_merge_block<T, F>(src: &mut [T], swap: &mut [T], mut lblock: usize, mut right: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -573,8 +564,7 @@ where
 	// [ lblock ] [ rblock ] [ left ] [ right ]
 }
 
-
-
+#[inline]
 pub fn rotate_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -598,6 +588,7 @@ where
     }
 }
 
+#[inline]
 pub fn parity_merge_two<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -628,6 +619,7 @@ where
 
 }
 
+#[inline]
 pub fn parity_merge_four<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool,
@@ -662,7 +654,7 @@ where
     T: Debug
 {
     for i in 0..4 {
-        try_exchange(src, &is_less, i * 2, i * 2 + 1);
+        try_exchange!(src, &is_less, i * 2, i * 2 + 1);
     }
     if is_less(&src[1], &src[2]) && is_less(&src[3], &src[4]) && is_less(&src[5], &src[6]) {
         return;
@@ -706,13 +698,13 @@ where
             quad_swap_four(src, is_less);
         }
         3 => {
-            try_exchange(src, &is_less, 0, 1);
-            if try_exchange(src, &is_less, 1, 2) {
-                try_exchange(src, &is_less, 0, 1);
+            try_exchange!(src, &is_less, 0, 1);
+            if try_exchange!(src, &is_less, 1, 2) {
+                try_exchange!(src, &is_less, 0, 1);
             }
         }
         2 => {
-            try_exchange(src, &is_less, 0, 1);
+            try_exchange!(src, &is_less, 0, 1);
         }
         _ => {
             return
@@ -727,7 +719,7 @@ where
     T: Debug
 {
     for idx in offset..src.len() {
-        if !try_exchange(src, is_less, idx - 1, idx) {
+        if !try_exchange!(src, is_less, idx - 1, idx) {
             continue;
         }
 
@@ -737,7 +729,7 @@ where
             }
         } else {
             for j in (0..idx - 1).rev() {
-                if !try_exchange(src, is_less, j, j+1) {
+                if !try_exchange!(src, is_less, j, j+1) {
                     break;
                 }
             }
@@ -806,26 +798,14 @@ where
 
 #[inline]
 pub fn create_swap<T>(caption: usize) -> Vec<T> {
-    let layout = match Layout::array::<T>(caption) {
-        Ok(layout) => layout,
-        Err(_) => {
-            unsafe {
-                let mut vec = Vec::with_capacity(512);
-                vec.set_len(512);
-                return vec
-            }
-        },
-    };
-
     unsafe {
-        let mem = alloc(layout).cast::<T>();
+        let mem = alloc::alloc(alloc::Layout::array::<T>(caption).unwrap_unchecked()) as *mut T;
         if !mem.is_null() {
-            let mut vec = Vec::from_raw_parts(mem, 0, caption);
-            vec.set_len(caption);
+            let mut vec = Vec::from_raw_parts(mem, caption, caption);
             vec
         } else {
-            let mut vec = Vec::with_capacity(512);
-            vec.set_len(512);
+            let mut vec = Vec::with_capacity(32);
+            vec.set_len(32);
             vec
         }
     }
@@ -864,5 +844,4 @@ where
     T: Debug + Ord
 {
     quicksort_order_by(src, T::lt);
-    // recurse(v, &mut is_less, None, limit);
 }
