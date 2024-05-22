@@ -13,9 +13,25 @@ fn main() {
     assert!(words == copy_words);
     println!("{:?}", words); // 输出: ["apple", "banana", "cherry", "date"]
 
-    for i in 1..32 {
+    // for i in 33..63 {
+    //     check_sort(i);
+    // }
+    for i in 65..69 {
         check_sort(i);
     }
+    // for i in 1..32 {
+    //     check_sort(i);
+    // }
+
+    let mut vec = Vec::with_capacity(120);
+    vec.push(1);
+    vec.push(1);
+    vec.push(1);
+    // unsafe {
+    //     vec.set_len(120);
+    // }
+    vec[2] = 10;
+    println!("ssss {:?}", vec);
     println!("finish check");
 }
 

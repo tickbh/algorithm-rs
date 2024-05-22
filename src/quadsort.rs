@@ -1,4 +1,4 @@
-use std::{fmt::Debug, mem::{self, MaybeUninit}, ops::Range, ptr};
+use std::{alloc::{alloc, Layout}, fmt::Debug, mem::{self, MaybeUninit}, ops::Range, ptr};
 
 macro_rules! try_ex {
     ($start: expr, $end: expr) => {
@@ -17,6 +17,16 @@ macro_rules! check_less {
     };
     ($src: expr, $s: expr, $dst: expr, $d: expr, $func: expr) => {
         $func(&$src[$s], &$dst[$d])
+    };
+}
+
+
+macro_rules! check_big {
+    ($src: expr, $s: expr, $e: expr, $func: expr) => {
+        !check_less!($src, $s, $e, $func)
+    };
+    ($src: expr, $s: expr, $dst: expr, $d: expr, $func: expr) => {
+        !check_less!($src, $s, $dst, $d, $func)
     };
 }
 
@@ -50,21 +60,22 @@ macro_rules! head_branchless_merge {
     };
 }
 
-// pub fn head_branchless_merge<T, F>(src: &mut [T], swap: &mut [T], index: &mut usize, left: &mut usize, right: &mut usize, is_less: &F)
-// where
-//     F: Fn(&T, &T) -> bool,
-//     T: Debug + Clone
-// {
-//     if is_less(&src[*left], &src[*right]) {
-//         do_set_elem!(&mut src[*left], &mut swap[*index]);
-//         *left += 1;
-//     } else {
-//         do_set_elem!(&mut src[*right], &mut swap[*index]);
-//         *right += 1;
-//     }
-//     *index += 1;
-// }
+macro_rules! tail_branchless_merge {
+    ($dest: expr, $src: expr, $index: expr, $left: expr, $right: expr, $func: expr) => {
+        tail_branchless_merge!($dest, $index, $src, $left, $src, $right, $func)
+    };
 
+    ($dest: expr, $di: expr, $array_a: expr, $ai: expr, $array_b: expr, $bi: expr, $func: expr) => {
+        if check_big!($array_a, *$ai, $array_b, *$bi, $func) {
+            do_set_elem!(&mut $array_a[*$ai], &mut $dest[$di]);
+            *$ai = (*$ai).max(1) - 1;
+        } else {
+            do_set_elem!(&mut $array_b[*$bi], &mut $dest[$di]);
+            *$bi = (*$bi).max(1) - 1;
+        }
+        $di = $di.max(1) - 1;
+    };
+}
 
 pub fn try_exchange<T, F>(src: &mut [T], is_less: &F, start: usize, end: usize) -> bool
 where
@@ -118,7 +129,7 @@ where
     F: Fn(&T, &T) -> bool,
     T: Debug + Clone
 {
-    let mut swap = src[..32].to_vec();
+    let mut swap = create_swap(32);
     let len = src.len();
     let count = len / 32;
     for i in 0..count {
@@ -130,35 +141,20 @@ where
     }
 }
 
-pub fn head_branchless_merge<T, F>(src: &mut [T], swap: &mut [T], index: &mut usize, left: &mut usize, right: &mut usize, is_less: &F)
-where
-    F: Fn(&T, &T) -> bool,
-    T: Debug + Clone
-{
-    if is_less(&src[*left], &src[*right]) {
-        do_set_elem!(&mut src[*left], &mut swap[*index]);
-        *left += 1;
-    } else {
-        do_set_elem!(&mut src[*right], &mut swap[*index]);
-        *right += 1;
-    }
-    *index += 1;
-}
-
-pub fn tail_branchless_merge<T, F>(src: &mut [T], swap: &mut [T], index: &mut usize, left: &mut usize, right: &mut usize, is_less: &F)
-where
-    F: Fn(&T, &T) -> bool,
-    T: Debug + Clone
-{
-    if !is_less(&src[*left], &src[*right]) {
-        do_set_elem!(&mut src[*left], &mut swap[*index]);
-        *left -= 1;
-    } else {
-        do_set_elem!(&mut src[*right], &mut swap[*index]);
-        *right -= 1;
-    }
-    *index -= 1;
-}
+// pub fn tail_branchless_merge<T, F>(src: &mut [T], swap: &mut [T], index: &mut usize, left: &mut usize, right: &mut usize, is_less: &F)
+// where
+//     F: Fn(&T, &T) -> bool,
+//     T: Debug + Clone
+// {
+//     if !is_less(&src[*left], &src[*right]) {
+//         do_set_elem!(&mut src[*left], &mut swap[*index]);
+//         *left -= 1;
+//     } else {
+//         do_set_elem!(&mut src[*right], &mut swap[*index]);
+//         *right -= 1;
+//     }
+//     *index -= 1;
+// }
 
 pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], mut left: usize, mut right: usize, is_less: &F)
 where
@@ -340,94 +336,114 @@ where
     F: Fn(&T, &T) -> bool,
     T: Debug + Clone
 {
-    if src.len() == block {
+    if src.len() <= block {
+        return;
+    }
+    let mut ll = 0;
+    let mut rl = block;
+    if check_less!(src, rl - 1, rl, is_less) {
         return;
     }
 
-    let mut ll = block - 1;
-    let mut la = src.len() - 1;
-    if is_less(&src[ll], &src[ll + 1]) {
-        return;
+    let mut index = 0;
+    let len = src.len();
+    while ll < block && rl < len {
+        head_branchless_merge!(swap, src, index, &mut ll, &mut rl, is_less);
     }
 
-    let mut lr = la - ll;
-    if src.len() <= swap.len() && lr > 64 {
-        cross_merge(swap, src, block, lr, is_less);
-        unsafe {
-            ptr::copy_nonoverlapping(&mut src[0], &mut swap[0], src.len());
-        }
-        return;
+    if ll < block {
+        do_set_elem!(&mut src[ll], &mut swap[index], block - ll);
+    } else if rl < len {
+        do_set_elem!(&mut src[rl], &mut swap[index], len - rl);
     }
-    unsafe {
-        ptr::copy_nonoverlapping(&mut swap[0], &mut src[block], lr);
-    }
-    lr -= 1;
-    while ll > 16 && lr > 16 {
-        while is_less(&src[ll], &src[lr - 15]) {
-            for _ in 0..16 {
-                do_set_elem!(&mut src[la], &mut swap[lr]);
-                la -= 1;
-                lr -= 1;
-            }
-            if lr <= 16 {
-                break;
-            }
-        }
 
-        while !is_less(&src[ll - 15], &src[lr]) {
-            for _ in 0..16 {
-                unsafe {
-                    ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
-                }
-                la -= 1;
-                lr -= 1;
-            }
-            if ll <= 16 {
-                break;
-            }
-        }
+    do_set_elem!(&mut swap[0], &mut src[0], len);
 
-        for _ in 0..8 {
-            if is_less(&src[ll], &src[lr - 1]) {
-                for _ in 0..2 {
-                    unsafe {
-                        ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
-                        la -= 1;
-                        lr -= 1;
-                    }
-                }
-            } else if !is_less(&src[ll - 1], &src[lr]) {
-                for _ in 0..2 {
-                    unsafe {
-                        ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
-                        la -= 1;
-                        ll -= 1;
-                    }
-                }
-            } else {
-                if is_less(&src[ll], &src[lr]) {
-                    unsafe {
-                        ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
-                        ptr::copy_nonoverlapping(&mut src[la-1], &mut src[ll], 1);
-                        la -= 2;
-                        ll -= 1;
-                        lr -= 1;
-                    }
-                } else {
-                    unsafe {
-                        ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
-                        ptr::copy_nonoverlapping(&mut src[la-1], &mut src[lr], 1);
-                        la -= 2;
-                        ll -= 1;
-                        lr -= 1;
-                    }
-                }
-
-                tail_branchless_merge(src, swap, &mut la, &mut ll, &mut lr, is_less);
-            }
-        }
-    }
-    // todo!()
+    //
+    // let mut ll = block - 1;
+    // let mut la = src.len() - 1;
+    // if is_less(&src[ll], &src[ll + 1]) {
+    //     return;
+    // }
+    //
+    // let mut lr = la - ll;
+    // if src.len() <= swap.len() && lr > 64 {
+    //     cross_merge(swap, src, block, lr, is_less);
+    //     unsafe {
+    //         ptr::copy_nonoverlapping(&mut src[0], &mut swap[0], src.len());
+    //     }
+    //     return;
+    // }
+    // unsafe {
+    //     ptr::copy_nonoverlapping(&mut swap[0], &mut src[block], lr);
+    // }
+    // lr -= 1;
+    // while ll > 16 && lr > 16 {
+    //     while is_less(&src[ll], &src[lr - 15]) {
+    //         for _ in 0..16 {
+    //             do_set_elem!(&mut src[la], &mut swap[lr]);
+    //             la -= 1;
+    //             lr -= 1;
+    //         }
+    //         if lr <= 16 {
+    //             break;
+    //         }
+    //     }
+    //
+    //     while !is_less(&src[ll - 15], &src[lr]) {
+    //         for _ in 0..16 {
+    //             unsafe {
+    //                 ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+    //             }
+    //             la -= 1;
+    //             lr -= 1;
+    //         }
+    //         if ll <= 16 {
+    //             break;
+    //         }
+    //     }
+    //
+    //     for _ in 0..8 {
+    //         if is_less(&src[ll], &src[lr - 1]) {
+    //             for _ in 0..2 {
+    //                 unsafe {
+    //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
+    //                     la -= 1;
+    //                     lr -= 1;
+    //                 }
+    //             }
+    //         } else if !is_less(&src[ll - 1], &src[lr]) {
+    //             for _ in 0..2 {
+    //                 unsafe {
+    //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+    //                     la -= 1;
+    //                     ll -= 1;
+    //                 }
+    //             }
+    //         } else {
+    //             if is_less(&src[ll], &src[lr]) {
+    //                 unsafe {
+    //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[lr], 1);
+    //                     ptr::copy_nonoverlapping(&mut src[la-1], &mut src[ll], 1);
+    //                     la -= 2;
+    //                     ll -= 1;
+    //                     lr -= 1;
+    //                 }
+    //             } else {
+    //                 unsafe {
+    //                     ptr::copy_nonoverlapping(&mut src[la], &mut src[ll], 1);
+    //                     ptr::copy_nonoverlapping(&mut src[la-1], &mut src[lr], 1);
+    //                     la -= 2;
+    //                     ll -= 1;
+    //                     lr -= 1;
+    //                 }
+    //             }
+    //
+    //             tail_branchless_merge!(src, la, src, &mut ll, swap, &mut lr, is_less);
+    //         }
+    //     }
+    // }
+    // // todo!()
 }
 
 pub fn tail_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
@@ -440,7 +456,7 @@ where
     while block < len && block < swap_len {
         for idx in (0..len).step_by(block * 2) {
             if idx + block * 2 < len {
-                partial_backward_merge(&mut src[idx..], swap, block, is_less);
+                partial_backward_merge(&mut src[idx..idx+block * 2], swap, block, is_less);
                 continue;
             }
             partial_backward_merge(&mut src[idx..], swap, block, is_less);
@@ -491,12 +507,94 @@ where
 
 
 
-pub fn quad_merge<T, F>(src: &mut [T], swap: &mut [T], block: usize, is_less: &F)
+pub fn quad_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F) -> usize
 where
     F: Fn(&T, &T) -> bool,
     T: Debug + Clone
 {
+    let len = src.len();
+    let swap_len = swap.len();
+    block *= 4;
+    while block < len && block < swap_len {
+        let mut index = 0;
+        loop {
+            quad_merge_block(&mut src[index..], swap, block / 4, is_less);
+            index += block;
+            if index + block > len {
+                break;
+            }
+        }
+        tail_merge(&mut src[index..], swap, block / 4, is_less);
+		block *= 4;
+    }
+    tail_merge(src, swap, block / 4, is_less);
+    block / 2
+}
 
+pub fn monobound_binary_first<T, F>(src: &mut [T], right: usize, left: usize, mut top: usize, is_less: &F) -> usize
+where
+    F: Fn(&T, &T) -> bool,
+    T: Debug + Clone
+{
+    let mut end = right + top;
+    while top > 1 {
+        let mid = top / 2;
+        if check_less!(src, left, end - mid, is_less) {
+            end -= mid;
+        }
+        top -= mid;
+    }
+
+    if check_less!(src, left, end - 1, is_less) {
+        end -= 1;
+    }
+    return end - left
+}
+
+pub fn rotate_merge_block<T, F>(src: &mut [T], swap: &mut [T], mut lblock: usize, mut right: usize, is_less: &F)
+where
+    F: Fn(&T, &T) -> bool,
+    T: Debug + Clone
+{
+    if check_less!(src, lblock - 1, lblock, is_less) {
+        return;
+    }
+    let mut rblock = lblock / 2;
+    lblock -= rblock;
+    let left = monobound_binary_first(src, lblock + rblock, lblock, right, is_less);
+    right -= left;
+    
+    if left > 0 {
+        if lblock + left < swap.len() {
+            
+        }
+    }
+	// [ lblock ] [ rblock ] [ left ] [ right ]
+}
+
+
+
+pub fn rotate_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
+where
+    F: Fn(&T, &T) -> bool,
+    T: Debug + Clone
+{
+    let len = src.len();
+    if len <= block * 2 && len > block && len - block <= swap.len() {
+        partial_backward_merge(src, swap, block, is_less);
+        return;
+    }
+    while block < len {
+        for i in (0..len).step_by(block * 2) {
+            if i + block * 2 < len {
+                rotate_merge_block(&mut src[i..], swap, block, block, is_less);
+                continue;
+            }
+            rotate_merge_block(&mut src[i..], swap, block, len - i - block, is_less);
+            break;
+        }
+		block *= 2;
+    }
 }
 
 pub fn parity_merge_two<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
@@ -517,7 +615,7 @@ where
     }
     index = 3;
     (*left, *right) = (1, 3);
-    tail_branchless_merge(src, swap, &mut index, left, right, is_less);
+    tail_branchless_merge!(swap, src, index, left, right, is_less);
     if !is_less(&src[*left], &src[*right]) {
         do_set_elem!(&mut src[*left], &mut swap[index]);
     } else {
@@ -541,13 +639,13 @@ where
     println!("parity_merge_four start swap = {:?}", &swap[..8]);
     let mut index = 0;
     (*left, *right) = (0, 4);
-    head_branchless_merge(src, swap, &mut index, left, right, is_less);
+    head_branchless_merge!(swap, src, index, left, right, is_less);
     println!("parity_merge_four start 1 src = {:?}", &src[..8]);
     println!("parity_merge_four start 1 swap = {:?}", &swap[..8]);
-    head_branchless_merge(src, swap, &mut index, left, right, is_less);
+    head_branchless_merge!(swap, src, index, left, right, is_less);
     println!("parity_merge_four start 2 src = {:?}", &src[..8]);
     println!("parity_merge_four start 2 swap = {:?}", &swap[..8]);
-    head_branchless_merge(src, swap, &mut index, left, right, is_less);
+    head_branchless_merge!(swap, src, index, left, right, is_less);
     println!("parity_merge_four start 3 src = {:?}", &src[..8]);
     println!("parity_merge_four start 3 swap = {:?}", &swap[..8]);
     if is_less(&src[*left], &src[*right]) {
@@ -562,9 +660,9 @@ where
     println!("parity_merge_four mid swap = {:?}", &swap[..8]);
     index = 7;
     (*left, *right) = (3, 7);
-    tail_branchless_merge(src, swap, &mut index, left, right, is_less);
-    tail_branchless_merge(src, swap, &mut index, left, right, is_less);
-    tail_branchless_merge(src, swap, &mut index, left, right, is_less);
+    tail_branchless_merge!(swap, src, index, left, right, is_less);
+    tail_branchless_merge!(swap, src, index, left, right, is_less);
+    tail_branchless_merge!(swap, src, index, left, right, is_less);
     if !is_less(&src[*left], &src[*right]) {
         do_set_elem!(&mut src[*left], &mut swap[index]);
     } else {
@@ -728,6 +826,31 @@ where
     parity_merge(src, swap, half1, half2, is_less);
 }
 
+pub fn create_swap<T>(caption: usize) -> Vec<T> {
+    let layout = match Layout::array::<T>(caption) {
+        Ok(layout) => layout,
+        Err(_) => {
+            unsafe {
+                let mut vec = Vec::with_capacity(512);
+                vec.set_len(512);
+                return vec
+            }
+        },
+    };
+
+    unsafe {
+        let mem = alloc(layout).cast::<T>();
+        if !mem.is_null() {
+            let mut vec = Vec::from_raw_parts(mem, 0, caption);
+            vec.set_len(caption);
+            vec
+        } else {
+            let mut vec = Vec::with_capacity(512);
+            vec.set_len(512);
+            vec
+        }
+    }
+}
 
 pub fn quicksort<T, F>(src: &mut [T], is_less: F)
 where
@@ -736,11 +859,21 @@ where
 {
     match src.len() {
         l if l < 32 => {
-            let mut swap = src.to_vec();
+            let mut swap = create_swap(src.len());
             tail_swap(src,  &mut swap, &is_less);
         }
         _ => {
             quad_swap(src, &is_less);
+            let mut swap = create_swap::<T>(src.len());
+            if swap.len() != src.len() {
+                tail_merge(src, &mut swap[..32], 32, &is_less);
+                return;
+            }
+            let block = quad_merge(src, &mut swap, 32, &is_less);
+            rotate_merge(src, &mut swap, block, &is_less);
+            // Vec::from_raw_parts(ptr, length, capacity)
+            // Vec::with_capacity(capacity)
+            println!("block = {:?}", block);
         }
     }
 
