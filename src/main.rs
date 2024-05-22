@@ -3,17 +3,19 @@ use std::cmp::Ordering::Less;
 use std::time::Instant;
 use rand;
 
-use algorithm::quadsort::{quad_sort, tiny_sort};
+// use algorithm::quadsort::{quad_sort, tiny_sort};
+
+use algorithm::quad_sort::quad_sort;
 
 fn main() {
     println!("Hello, world!");
-    let mut words = vec!["cherry", "banana", "apple", "date"];
-    let mut copy_words = words.clone();
-    words.sort_by(|a, b| a.cmp(b)); // 默认就是按字典序排序
-    tiny_sort(&mut copy_words, &|a, b| a.cmp(b) == Ordering::Less);
+    // let mut words = vec!["cherry", "banana", "apple", "date"];
+    // let mut copy_words = words.clone();
+    // words.sort_by(|a, b| a.cmp(b)); // 默认就是按字典序排序
+    // tiny_sort(&mut copy_words, &|a, b| a.cmp(b) == Ordering::Less);
 
-    assert!(words == copy_words);
-    println!("{:?}", words); // 输出: ["apple", "banana", "cherry", "date"]
+    // assert!(words == copy_words);
+    // println!("{:?}", words); // 输出: ["apple", "banana", "cherry", "date"]
 
     // for i in 33..63 {
     //     check_sort(i);
@@ -23,7 +25,7 @@ fn main() {
     // }
     let mut cost_sort_time = 0;
     let mut cost_quad_time = 0;
-    for i in 1..3999 {
+    for i in 1..99 {
         check_sort(i, &mut cost_sort_time, &mut cost_quad_time);
     }
     // for i in 0..1 {
