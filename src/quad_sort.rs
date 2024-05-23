@@ -4,10 +4,6 @@ use std::process::id;
 struct QuadSort<T, F: Fn(&T, &T) -> bool> {
     is_less: F,
     index: usize,
-    ll: usize,
-    lr: usize,
-    rl: usize,
-    rr: usize,
     block: usize,
     mark: PhantomData<T>,
 }
@@ -112,7 +108,7 @@ pub fn create_swap<T>(caption: usize) -> Vec<T> {
 
 impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
     pub fn new(is_less: F) -> Self {
-        Self { is_less, index: 0, ll: 0, lr: 0, rl: 0, rr: 0, block: 0, mark: PhantomData }
+        Self { is_less, index: 0, block: 0, mark: PhantomData }
     }
 
 
@@ -173,36 +169,36 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
             do_set_elem!(&mut from[0], &mut dest[right], left);
             return;
         }
-        self.ll = 0;
-        self.lr = self.ll + left;
+        let mut ll = 0;
+        let mut lr = ll + left;
         let mut dl = 0;
 
-        self.rl = self.lr - 1;
-        self.rr = self.rl + right;
+        let mut rl = lr - 1;
+        let mut rr = rl + right;
 
         let is_less = &self.is_less;
 
         macro_rules! compare_to_next {
             (true) => {
                 // println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
-                if check_less!(from, self.ll, self.lr, is_less) {
-                    do_set_elem!(&mut from[self.ll], &mut dest[dl]);
-                    self.ll += 1;
+                if check_less!(from, ll, lr, is_less) {
+                    do_set_elem!(&mut from[ll], &mut dest[dl]);
+                    ll += 1;
                 } else {
-                    do_set_elem!(&mut from[self.lr], &mut dest[dl]);
-                    self.lr += 1;
+                    do_set_elem!(&mut from[lr], &mut dest[dl]);
+                    lr += 1;
                 }
                 dl += 1;
             };
             (false) => {
                 // println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
 
-                if !is_less(&from[self.rl], &from[self.rr]) {
-                    do_set_elem!(&mut from[self.rl], &mut dest[dr]);
-                    self.rl-=1;
+                if !is_less(&from[rl], &from[rr]) {
+                    do_set_elem!(&mut from[rl], &mut dest[dr]);
+                    rl-=1;
                 } else {
-                    do_set_elem!(&mut from[self.rr], &mut dest[dr]);
-                    self.rr-=1;
+                    do_set_elem!(&mut from[rr], &mut dest[dr]);
+                    rr-=1;
                 }
                 dr -= 1;
             };
@@ -713,14 +709,14 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
         //     do_set_elem!(&mut src[self.lr], &mut swap[self.index], 8 - self.lr);
         // }
 
-        (self.ll, self.lr) = (0, 4);
+        let (mut ll, mut lr) = (0, 4);
         for _ in 0..4 {
-            head_branchless_merge!(swap, src, self.index, self.ll, self.lr, self.is_less);
+            head_branchless_merge!(swap, src, self.index, ll, lr, self.is_less);
         }
         self.index = 7;
-        (self.ll, self.lr) = (3, 7);
+        (ll, lr) = (3, 7);
         for _ in 0..4 {
-            tail_branchless_merge!(swap, src, self.index, self.ll, self.lr, self.is_less);
+            tail_branchless_merge!(swap, src, self.index, ll, lr, self.is_less);
         }
     }
 

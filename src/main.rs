@@ -76,7 +76,7 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         // }
         // rands = vec![84, 72, 127, 41, 71, 87, 12, 51, 59, 60, 30, 23, 96];
         let mut ori = rands.clone();
-        // println!("ori = {:?}", ori);
+        println!("ori = {:?}", ori);
         let mut copy_rands = rands.clone();
         let now = Instant::now();
         // rands.sort_by(|a, b| a.cmp(b));
@@ -84,8 +84,8 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         // quicksort(&mut rands, |a, b| a < b);
         *cost_sort_time += now.elapsed().as_micros();
         let now = Instant::now();
-        quad_sort(&mut copy_rands);
-        // algorithm::quadsort::quad_sort(&mut copy_rands);
+        // quad_sort(&mut copy_rands);
+        algorithm::quadsort::quad_sort(&mut copy_rands);
         *cost_quad_time += now.elapsed().as_micros();
         // if rands != copy_rands {
         //     println!("rands = {:?}", rands);
