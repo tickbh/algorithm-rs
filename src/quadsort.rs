@@ -132,22 +132,21 @@ pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], mut left: usize, mut r
 where
     F: Fn(&T, &T) -> bool
 {
-        let mut dr = left + right - 1;
-        if check_less!(from, left-1, left, is_less) {
-            do_set_elem!(&mut from[0], &mut dest[0], left + right);
-            return;
-        } else if check_big!(from, 0, dr, is_less) {
-            do_set_elem!(&mut from[left], &mut dest[0], right);
-            do_set_elem!(&mut from[0], &mut dest[right], left);
-            return;
-        }
+    let mut dr = left + right - 1;
+    if check_less!(from, left-1, left, is_less) {
+        do_set_elem!(&mut from[0], &mut dest[0], left + right);
+        return;
+    } else if check_big!(from, 0, dr, is_less) {
+        do_set_elem!(&mut from[left], &mut dest[0], right);
+        do_set_elem!(&mut from[0], &mut dest[right], left);
+        return;
+    }
     let mut ll = 0;
     let mut lr = ll + left;
     let mut dl = 0;
 
     let mut rl = lr - 1;
     let mut rr = rl + right;
-    let mut dr = left + right - 1;
 
     macro_rules! compare_to_next {
         (true) => {
@@ -671,18 +670,72 @@ pub fn parity_swap_eight<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
+    let mut vals = [0; 4];
+    let mut sum = 0;
     for i in 0..4 {
-        try_exchange!(src, is_less, i * 2, i * 2 + 1);
+        vals[i] = if check_less!(src, i * 2, i * 2 + 1, is_less) { 0 } else { 1 };
+        sum += vals[i] * 2usize.pow(i as u32);
     }
-    if is_less(&src[1], &src[2]) && is_less(&src[3], &src[4]) && is_less(&src[5], &src[6]) {
-        return;
+    match sum {
+        0 => {
+            return;
+        }
+        15 => {
+            src[0..8].reverse();
+            return;
+        }
+        _ => {
+            for i in 0..4 {
+                if vals[i] == 1 {
+                    src.swap(i * 2, i * 2 + 1);
+                }
+            }
+            parity_merge_two(src, swap, is_less);
+            parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
+            parity_merge_four(swap, src, is_less);
+        }
     }
+    // v1 = cmp(pta + 0, pta + 1) > 0;
+	// 	v2 = cmp(pta + 2, pta + 3) > 0;
+	// 	v3 = cmp(pta + 4, pta + 5) > 0;
+	// 	v4 = cmp(pta + 6, pta + 7) > 0;
 
-    let (mut left, mut right) = (0, 0);
-    parity_merge_two(src, swap, is_less);
-    parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
+	// 	switch (v1 + v2 * 2 + v3 * 4 + v4 * 8)
+	// 	{
+	// 		case 0:
+	// 			if (cmp(pta + 1, pta + 2) <= 0 && cmp(pta + 3, pta + 4) <= 0 && cmp(pta + 5, pta + 6) <= 0)
+	// 			{
+	// 				goto ordered;
+	// 			}
+	// 			FUNC(quad_swap_merge)(pta, swap, cmp);
+	// 			break;
 
-    parity_merge_four(swap, src, is_less);
+	// 		case 15:
+	// 			if (cmp(pta + 1, pta + 2) > 0 && cmp(pta + 3, pta + 4) > 0 && cmp(pta + 5, pta + 6) > 0)
+	// 			{
+	// 				pts = pta;
+	// 				goto reversed;
+	// 			}
+
+	// 		default:
+	// 		not_ordered:
+	// 			x = !v1; tmp = pta[x]; pta[0] = pta[v1]; pta[1] = tmp; pta += 2;
+	// 			x = !v2; tmp = pta[x]; pta[0] = pta[v2]; pta[1] = tmp; pta += 2;
+	// 			x = !v3; tmp = pta[x]; pta[0] = pta[v3]; pta[1] = tmp; pta += 2;
+	// 			x = !v4; tmp = pta[x]; pta[0] = pta[v4]; pta[1] = tmp; pta -= 6;
+
+	// 			FUNC(quad_swap_merge)(pta, swap, cmp);
+	// 	}
+    // for i in 0..4 {
+    //     try_exchange!(src, is_less, i * 2, i * 2 + 1);
+    // }
+    // // if is_less(&src[1], &src[2]) && is_less(&src[3], &src[4]) && is_less(&src[5], &src[6]) {
+    // //     return;
+    // // }
+
+    // parity_merge_two(src, swap, is_less);
+    // parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
+    // parity_merge_four(swap, src, is_less);
 }
 
 #[inline]
