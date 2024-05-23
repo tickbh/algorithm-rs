@@ -132,6 +132,16 @@ pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], mut left: usize, mut r
 where
     F: Fn(&T, &T) -> bool
 {
+        let is_less = &self.is_less;
+        let mut dr = left + right - 1;
+        if check_less!(from, left-1, left, is_less) {
+            do_set_elem!(&mut from[0], &mut dest[0], left + right);
+            return;
+        } else if check_big!(from, 0, dr, is_less) {
+            do_set_elem!(&mut from[left], &mut dest[0], right);
+            do_set_elem!(&mut from[0], &mut dest[right], left);
+            return;
+        }
     let mut ll = 0;
     let mut lr = ll + left;
     let mut dl = 0;
@@ -143,7 +153,7 @@ where
     macro_rules! compare_to_next {
         (true) => {
             // println!("left 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}", ll, &from[ll], lr, &from[lr], is_less(&from[ll], &from[lr]));
-            if is_less(&from[ll], &from[lr]) {
+                if check_less!(from, ll, lr, is_less) {
                 do_set_elem!(&mut from[ll], &mut dest[dl]);
                 ll += 1;
             } else {
@@ -157,23 +167,33 @@ where
 
             if !is_less(&from[rl], &from[rr]) {
                 do_set_elem!(&mut from[rl], &mut dest[dr]);
-                if rl > 0 { rl -= 1; }
-            } else {
-                do_set_elem!(&mut from[rr], &mut dest[dr]);
-                if rr > 0 { rr -= 1; }
-            }
-            if dr > 0 { dr -= 1; }
-        };
+                    rl-=1;
+                } else {
+                    do_set_elem!(&mut from[rr], &mut dest[dr]);
+                    rr-=1;
+                }
+                dr -= 1;
+            };
     }
     
     if left < right {
         compare_to_next!(true);
     }
-    while left > 0 {
-        compare_to_next!(true);
-        compare_to_next!(false);
-        left -= 1;
-    }
+        // println!("left = {}, right = {} dr = {}, rr = {}, rl = {}", left, right, dr, self.rr, self.rl);
+        // while left > 0 {
+        //     // println!("in repeat left = {}, right = {} dr = {}, rr = {}, rl = {}", left, right, dr, self.rr, self.rl);
+        //     // if self.rl == 0 {
+        //     //     println!("src = {:?}, swap = {:?}", dest, from);
+        //     // }
+        //     compare_to_next!(true);
+        //     compare_to_next!(false);
+        //     left -= 1;
+        // }
+        for _ in 0..left {
+
+            compare_to_next!(true);
+            compare_to_next!(false);
+        }
 }
 
 #[inline]
@@ -214,66 +234,58 @@ where
         (false) => {
             // println!("right 起始位置:{} {:?}, 结束位置:{} {:?} 比较大小:{}/{}", rl, &from[rl], rr, &from[rr], dr, is_less(&from[rl], &from[rr]));
 
-            if !is_less(&from[rl], &from[rr]) {
-                do_set_elem!(&mut from[rl], &mut dest[dr]);
-                if rl > 0 { rl -= 1; }
-            } else {
-                do_set_elem!(&mut from[rr], &mut dest[dr]);
-                if rr > 0 { rr -= 1; }
-            }
-            if dr > 0 { dr -= 1; }
+                if !(is_less)(&from[rl], &from[rr]) {
+                    do_set_elem!(&mut from[rl], &mut dest[dr]);
+                    rl -= 1;
+                } else {
+                    do_set_elem!(&mut from[rr], &mut dest[dr]);
+                    rr -= 1;
+                }
+                dr -= 1;
         };
     }
 
-    'outer: while rl > ll && rl - ll > 8 && rr > lr && rr - lr > 8 {
-        while check_less!(from, ll + 7, lr, is_less) {
-            unsafe {
-                ptr::copy_nonoverlapping(&mut from[ll], &mut dest[dl], 8);
+        'outer: while rl.saturating_sub(ll) > 8 && rr.saturating_sub(lr) > 8 {
+            while check_less!(from, ll + 7, lr, is_less) {
+                do_set_elem!(&mut from[ll], &mut dest[dl], 8);
+                dl += 8;
+                ll += 8;
+                if rl - ll <= 8 {
+                    break 'outer;
+                }
             }
-            dl += 8;
-            ll += 8;
-            if rl < ll || rl - ll <= 8 {
-                break 'outer;
-            }
-        }
 
-        while check_big!(from, ll, lr + 7, is_less) {
-            unsafe {
-                ptr::copy_nonoverlapping(&mut from[lr], &mut dest[dl], 8);
+            while check_big!(from, ll, lr + 7, is_less) {
+                do_set_elem!(&mut from[lr], &mut dest[dl], 8);
+                dl += 8;
+                lr += 8;
+                if rr - lr <= 8 {
+                    break 'outer;
+                }
             }
-            dl += 8;
-            lr += 8;
-            if rr < lr || rr - lr <= 8 {
-                break 'outer;
+            
+            while check_less!(from, rl, rr - 7, is_less) {
+                dr -= 8;
+                rr -= 8;
+                do_set_elem!(&mut from[rr + 1], &mut dest[dr + 1], 8);
+                if rr - lr <= 8 {
+                    break 'outer;
+                }
             }
-        }
-        
-        while check_less!(from, rl, rr - 7, is_less) {
-            dr -= 8;
-            rr -= 8;
-            unsafe {
-                ptr::copy_nonoverlapping(&mut from[rr + 1], &mut dest[dr + 1], 8);
-            }
-            if rr < lr || rr - lr <= 8 {
-                break 'outer;
-            }
-        }
 
-        
-        while check_big!(from, rl - 7, rr, is_less) {
-            dr -= 8;
-            rl -= 8;
-            unsafe {
-                ptr::copy_nonoverlapping(&mut from[rl + 1], &mut dest[dr + 1], 8);
+            
+            while check_big!(from, rl - 7, rr, is_less) {
+                dr -= 8;
+                rl -= 8;
+                do_set_elem!(&mut from[rl + 1], &mut dest[dr + 1], 8);
+                if rl - ll <= 8 {
+                    break 'outer;
+                }
             }
-            if rl < ll || rl - ll <= 8 {
-                break 'outer;
-            }
-        }
 
-        for _ in 0..8 {
-            compare_to_next!(true);
-            compare_to_next!(false);
+            for _ in 0..8 {
+                compare_to_next!(true);
+                compare_to_next!(false);
         }
     }
 
@@ -479,9 +491,10 @@ where
 {
     let len = src.len();
     let swap_len = swap.len();
+        let mut index = 0;
     block *= 4;
     while block < len && block < swap_len {
-        let mut index = 0;
+        index = 0;
         loop {
             quad_merge_block(&mut src[index..], swap, block / 4, is_less);
             index += block;
@@ -613,34 +626,45 @@ pub fn parity_merge_four<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, 
 where
     F: Fn(&T, &T) -> bool
 {
-    let mut index = 0;
-    // (*left, *right) = (0, 4);
-    // while *left < 4 && *right < 8 {
-    //     if check_less!(src, *left, *right, is_less) {
-    //         do_set_elem!(&mut src[*left], &mut swap[index]);
-    //         *left += 1;
-    //     } else {
-    //         do_set_elem!(&mut src[*right], &mut swap[index]);
-    //         *right += 1;
-    //     }
-    //     index += 1;
-    // }
+        if check_less!(src, 3, 4, is_less) {
+            do_set_elem!(&mut src[0], &mut swap[0], 8);
+            return;
+        }
+        let mut index = 0;
+        // (self.ll, self.lr) = (0, 4);
+        // while true {
+        //     if check_less!(src, self.ll, self.lr, self.is_less) {
+        //         do_set_elem!(&mut src[self.ll], &mut swap[index]);
+        //         index += 1;
+        //         self.ll += 1;
+        //         if self.ll >= 4 {
+        //             break;
+        //         }
+        //     } else {
+        //         do_set_elem!(&mut src[self.lr], &mut swap[index]);
+        //         index += 1;
+        //         self.lr += 1;
+        //         if self.lr >= 8 {
+        //             break;
+        //         }
+        //     }
+        // }
 
-    // if *left < 4 {
-    //     do_set_elem!(&mut src[*left], &mut swap[index], 4 - *left);
-    // } else if *right < 8 {
-    //     do_set_elem!(&mut src[*right], &mut swap[index], 8 - *right);
-    // }
+        // if self.ll < 4 {
+        //     do_set_elem!(&mut src[self.ll], &mut swap[index], 4 - self.ll);
+        // } else if self.lr < 8 {
+        //     do_set_elem!(&mut src[self.lr], &mut swap[index], 8 - self.lr);
+        // }
 
-    (*left, *right) = (0, 4);
-    for _ in 0..4 {
-        head_branchless_merge!(swap, src, index, left, right, is_less);
-    }
-    index = 7;
-    (*left, *right) = (3, 7);
-    for _ in 0..4 {
-        tail_branchless_merge!(swap, src, index, left, right, is_less);
-    }
+        let (mut ll, mut lr) = (0, 4);
+        for _ in 0..4 {
+            head_branchless_merge!(swap, src, index, ll, lr, self.is_less);
+        }
+        index = 7;
+        (ll, lr) = (3, 7);
+        for _ in 0..4 {
+            tail_branchless_merge!(swap, src, index, ll, lr, self.is_less);
+        }
 }
 
 #[inline]
@@ -649,7 +673,7 @@ where
     F: Fn(&T, &T) -> bool
 {
     for i in 0..4 {
-        try_exchange!(src, &is_less, i * 2, i * 2 + 1);
+        try_exchange!(src, is_less, i * 2, i * 2 + 1);
     }
     if is_less(&src[1], &src[2]) && is_less(&src[3], &src[4]) && is_less(&src[5], &src[6]) {
         return;
@@ -710,28 +734,71 @@ pub fn twice_unguarded_insert<T, F>(src: &mut [T], is_less: &F, offset: usize)
 where
     F: Fn(&T, &T) -> bool
 {
-    for idx in offset..src.len() {
-        if !try_exchange!(src, is_less, idx - 1, idx) {
-            continue;
-        }
-
-        if is_less(&src[idx - 1], &src[0]) {
-            for j in (0..idx - 1).rev() {
-                src.swap(j+1, j)
-            }
-        } else {
-            for j in (0..idx - 1).rev() {
-                if !try_exchange!(src, is_less, j, j+1) {
+        // index = 0;
+        // for idx in offset..src.len() {
+        //     index = idx;
+        //     for j in 0..idx {
+        //         if (self.is_less)(&src[idx], &src[j]) {
+        //             index = j;
+        //             break;
+        //         }
+        //     }
+        //     if index == idx {
+        //         continue;
+        //     }
+        //     do_set_elem!(&mut src[index], &mut swap[1], idx - index);
+        //     do_set_elem!(&mut src[idx], &mut swap[0]);
+        //     do_set_elem!(&mut swap[0], &mut src[index], idx - index + 1);
+        // }
+        let is_less = &self.is_less;
+        let mut index = 0;
+        for idx in offset..src.len() {
+            index = idx;
+            for j in 0..idx {
+                if (is_less)(&src[idx], &src[j]) {
+                    index = j;
                     break;
                 }
             }
+            if index == idx {
+                continue;
+            }
+            do_set_elem!(&mut src[index], &mut swap[1], idx - index);
+            do_set_elem!(&mut src[idx], &mut swap[0]);
+            do_set_elem!(&mut swap[0], &mut src[index], idx - index + 1);
         }
-    }
+        // let mut index = 0;
+        // for idx in offset..src.len() {
+        //     if !try_exchange!(src, self.is_less, idx - 1, idx) {
+        //         continue;
+        //     }
+            
+        //     for j in (0..idx - 1).rev() {
+        //         if (self.is_less)(&src[idx - 1], &src[j]) {
+        //             index = j;
+        //             break;
+        //         }
+        //         if !try_exchange!(src, self.is_less, j, j+1) {
+        //             break;
+        //         }
+        //     }
+        //     if (self.is_less)(&src[idx - 1], &src[0]) {
+        //         for j in (0..idx - 1).rev() {
+        //             src.swap(j+1, j)
+        //         }
+        //     } else {
+        //         for j in (0..idx - 1).rev() {
+        //             if !try_exchange!(src, self.is_less, j, j+1) {
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // }
 }
 
 #[allow(unconditional_recursion)]
 #[inline]
-pub fn tail_swap<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
+pub fn less_24_tail_swap<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
@@ -750,15 +817,32 @@ where
             twice_unguarded_insert(src, is_less, 4);
             return;
         }
+            l if l < 16 => {
+                self.parity_swap_eight(src, swap);
+                self.less_24_tail_swap(&mut src[8..], swap);
+                self.partial_backward_merge(src, swap, 8);
+                return;
+            }
         l if l >= 16 && l < 24 => {
             parity_swap_sixteen(src, swap, is_less);
             twice_unguarded_insert(src, is_less, 16);
             return;
         }
         _ => {
-
+                unreachable!()
+            }
         }
     }
+#[inline]
+pub fn tail_swap<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
+where
+    F: Fn(&T, &T) -> bool
+{
+
+	if src.len() < 24 {
+	    less_24_tail_swap(src, swap);
+	    return;
+	}
     let mut half1 = src.len() / 2;
     let mut quad1 = half1 / 2;
     let mut quad2 = half1 - quad1;
