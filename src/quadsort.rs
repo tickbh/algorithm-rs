@@ -39,12 +39,12 @@ macro_rules! head_branchless_merge {
     };
 
     ($dest: expr, $di: expr, $array_a: expr, $ai: expr, $array_b: expr, $bi: expr, $func: expr) => {
-        if check_less!($array_a, *$ai, $array_b, *$bi, $func) {
-            do_set_elem!(&mut $array_a[*$ai], &mut $dest[$di]);
-            *$ai += 1;
+        if check_less!($array_a, $ai, $array_b, $bi, $func) {
+            do_set_elem!(&mut $array_a[$ai], &mut $dest[$di]);
+            $ai += 1;
         } else {
-            do_set_elem!(&mut $array_b[*$bi], &mut $dest[$di]);
-            *$bi += 1;
+            do_set_elem!(&mut $array_b[$bi], &mut $dest[$di]);
+            $bi += 1;
         }
         $di += 1;
     };
@@ -56,12 +56,12 @@ macro_rules! tail_branchless_merge {
     };
 
     ($dest: expr, $di: expr, $array_a: expr, $ai: expr, $array_b: expr, $bi: expr, $func: expr) => {
-        if check_big!($array_a, *$ai, $array_b, *$bi, $func) {
-            do_set_elem!(&mut $array_a[*$ai], &mut $dest[$di]);
-            *$ai = (*$ai).max(1) - 1;
+        if check_big!($array_a, $ai, $array_b, $bi, $func) {
+            do_set_elem!(&mut $array_a[$ai], &mut $dest[$di]);
+            $ai = ($ai).max(1) - 1;
         } else {
-            do_set_elem!(&mut $array_b[*$bi], &mut $dest[$di]);
-            *$bi = (*$bi).max(1) - 1;
+            do_set_elem!(&mut $array_b[$bi], &mut $dest[$di]);
+            $bi = ($bi).max(1) - 1;
         }
         $di = $di.max(1) - 1;
     };
@@ -132,7 +132,6 @@ pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], mut left: usize, mut r
 where
     F: Fn(&T, &T) -> bool
 {
-        let is_less = &self.is_less;
         let mut dr = left + right - 1;
         if check_less!(from, left-1, left, is_less) {
             do_set_elem!(&mut from[0], &mut dest[0], left + right);
@@ -327,7 +326,7 @@ where
     let mut index = 0;
     let len = src.len();
     while ll < block && rl < len {
-        head_branchless_merge!(swap, src, index, &mut ll, &mut rl, is_less);
+        head_branchless_merge!(swap, src, index, ll, rl, is_less);
     }
 
     if ll < block {
@@ -574,7 +573,7 @@ where
 }
 
 #[inline]
-pub fn parity_merge_two<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
+pub fn parity_merge_two<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
@@ -622,7 +621,7 @@ where
 }
 
 #[inline]
-pub fn parity_merge_four<T, F>(src: &mut [T], swap: &mut [T], left: &mut usize, right: &mut usize, is_less: &F)
+pub fn parity_merge_four<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
@@ -658,12 +657,12 @@ where
 
         let (mut ll, mut lr) = (0, 4);
         for _ in 0..4 {
-            head_branchless_merge!(swap, src, index, ll, lr, self.is_less);
+            head_branchless_merge!(swap, src, index, ll, lr, is_less);
         }
         index = 7;
         (ll, lr) = (3, 7);
         for _ in 0..4 {
-            tail_branchless_merge!(swap, src, index, ll, lr, self.is_less);
+            tail_branchless_merge!(swap, src, index, ll, lr, is_less);
         }
 }
 
@@ -680,10 +679,10 @@ where
     }
 
     let (mut left, mut right) = (0, 0);
-    parity_merge_two(src, swap, &mut left, &mut right, is_less);
-    parity_merge_two(&mut src[4..], &mut swap[4..], &mut left, &mut right, is_less);
+    parity_merge_two(src, swap, is_less);
+    parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
 
-    parity_merge_four(swap, src, &mut left, &mut right, is_less);
+    parity_merge_four(swap, src, is_less);
 }
 
 #[inline]
@@ -699,8 +698,8 @@ where
     }
 
     let (mut left, mut right) = (0, 0);
-    parity_merge_four(src, swap, &mut left, &mut right, is_less);
-    parity_merge_four(&mut src[8..], &mut swap[8..], &mut left, &mut right, is_less);
+    parity_merge_four(src, swap, is_less);
+    parity_merge_four(&mut src[8..], &mut swap[8..], is_less);
 
     parity_merge(src, swap, 8, 8, is_less);
 }
@@ -730,7 +729,7 @@ where
 }
 
 #[inline]
-pub fn twice_unguarded_insert<T, F>(src: &mut [T], is_less: &F, offset: usize)
+pub fn twice_unguarded_insert<T, F>(src: &mut [T], swap: &mut [T], is_less: &F, offset: usize)
 where
     F: Fn(&T, &T) -> bool
 {
@@ -750,7 +749,6 @@ where
         //     do_set_elem!(&mut src[idx], &mut swap[0]);
         //     do_set_elem!(&mut swap[0], &mut src[index], idx - index + 1);
         // }
-        let is_less = &self.is_less;
         let mut index = 0;
         for idx in offset..src.len() {
             index = idx;
@@ -796,7 +794,6 @@ where
         // }
 }
 
-#[allow(unconditional_recursion)]
 #[inline]
 pub fn less_24_tail_swap<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
@@ -809,23 +806,23 @@ where
         }
         l if l < 8 => {
             quad_swap_four(src, is_less);
-            twice_unguarded_insert(src, is_less, 4);
+            twice_unguarded_insert(src, swap, is_less, 4);
             return;
         }
         l if l < 12 => {
             parity_swap_eight(src, swap, is_less);
-            twice_unguarded_insert(src, is_less, 4);
+            twice_unguarded_insert(src, swap, is_less, 4);
             return;
         }
             l if l < 16 => {
-                self.parity_swap_eight(src, swap);
-                self.less_24_tail_swap(&mut src[8..], swap);
-                self.partial_backward_merge(src, swap, 8);
+                parity_swap_eight(src, swap, is_less);
+                less_24_tail_swap(&mut src[8..], swap, is_less);
+                partial_backward_merge(src, swap, 8, is_less);
                 return;
             }
         l if l >= 16 && l < 24 => {
             parity_swap_sixteen(src, swap, is_less);
-            twice_unguarded_insert(src, is_less, 16);
+            twice_unguarded_insert(src, swap, is_less, 16);
             return;
         }
         _ => {
@@ -833,6 +830,7 @@ where
             }
         }
     }
+    
 #[inline]
 pub fn tail_swap<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
@@ -840,7 +838,7 @@ where
 {
 
 	if src.len() < 24 {
-	    less_24_tail_swap(src, swap);
+	    less_24_tail_swap(src, swap, is_less);
 	    return;
 	}
     let mut half1 = src.len() / 2;
