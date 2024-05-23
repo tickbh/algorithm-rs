@@ -30,7 +30,7 @@ fn main() {
         let mut cost_sort_time = 0;
         let mut cost_quad_time = 0;
         // for i in 100000..100001 {
-        for i in 1..1999 {
+        for i in 1..9999 {
             check_sort(i, &mut cost_sort_time, &mut cost_quad_time);
         }
         cost_sort_vec.push(cost_sort_time);
@@ -50,7 +50,7 @@ fn main() {
     let aver_sort = aver(cost_sort_vec).max(1);
     let aver_quad = aver(cost_quad_vec).max(1);
 
-    println!("time = {:?} cost sort time = {:?}us cost quad time = {:?}us, ratio = {:?}%", Instant::now(), aver_sort, aver_quad, (aver_quad - aver_sort) as f64 / aver_sort as f64 * 100f64);
+    println!("time = {:?} cost sort time = {:?}ms cost quad time = {:?}ms, ratio = {:?}%", Instant::now(), aver_sort as f64 / 1000000f64, aver_quad as f64 / 1000000f64, (aver_quad - aver_sort) as f64 / aver_sort as f64 * 100f64);
 
 
     // let mut vec = Vec::with_capacity(120);
@@ -76,17 +76,17 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         // }
         rands = vec![1, 92, 44, 31, 114, 61, 87, 27, 119, 116, 78, 111];
         let mut ori = rands.clone();
-        println!("ori = {:?}", ori);
+        // println!("ori = {:?}", ori);
         let mut copy_rands = rands.clone();
         let now = Instant::now();
         // rands.sort_by(|a, b| a.cmp(b));
         rands.sort();
         // quicksort(&mut rands, |a, b| a < b);
-        *cost_sort_time += now.elapsed().as_micros();
+        *cost_sort_time += now.elapsed().as_nanos();
         let now = Instant::now();
         // quad_sort(&mut copy_rands);
         algorithm::quadsort::quad_sort(&mut copy_rands);
-        *cost_quad_time += now.elapsed().as_micros();
+        *cost_quad_time += now.elapsed().as_nanos();
         // if rands != copy_rands {
         //     println!("rands = {:?}", rands);
         //     println!("copy_rands = {:?}", copy_rands);

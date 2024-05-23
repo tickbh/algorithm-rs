@@ -867,7 +867,9 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
             }
             l if l < 16 => {
                 self.parity_swap_eight(src, swap);
-                self.less_24_tail_swap(&mut src[8..], swap);
+                self.quad_swap_four(&mut src[8..]);
+                self.twice_unguarded_insert(&mut src[8..], swap, 4);
+                // self.less_24_tail_swap(&mut src[8..], swap);
                 self.partial_backward_merge(src, swap, 8);
                 return;
             }

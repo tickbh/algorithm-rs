@@ -335,7 +335,7 @@ where
         do_set_elem!(&mut src[rl], &mut swap[index], len - rl);
     }
 
-    // do_set_elem!(&mut swap[0], &mut src[0], len);
+    do_set_elem!(&mut swap[0], &mut src[0], len);
 
     //
     // let mut ll = block - 1;
@@ -811,15 +811,18 @@ where
         }
         l if l < 12 => {
             parity_swap_eight(src, swap, is_less);
-            twice_unguarded_insert(src, swap, is_less, 4);
+            twice_unguarded_insert(src, swap, is_less, 8);
             return;
         }
-            l if l < 16 => {
-                parity_swap_eight(src, swap, is_less);
-                less_24_tail_swap(&mut src[8..], swap, is_less);
-                partial_backward_merge(src, swap, 8, is_less);
-                return;
-            }
+        l if l < 16 => {
+            parity_swap_eight(src, swap, is_less);
+            quad_swap_four(&mut src[8..], is_less);
+            twice_unguarded_insert(&mut src[8..], swap, is_less, 4);
+            // twice_unguarded_insert(src, swap, is_less, 8);
+            // less_24_tail_swap(&mut src[8..], swap, is_less);
+            partial_backward_merge(src, swap, 8, is_less);
+            return;
+        }
         l if l >= 16 && l < 24 => {
             parity_swap_sixteen(src, swap, is_less);
             twice_unguarded_insert(src, swap, is_less, 16);
