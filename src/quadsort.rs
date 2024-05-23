@@ -676,25 +676,32 @@ where
         vals[i] = if check_less!(src, i * 2, i * 2 + 1, is_less) { 0 } else { 1 };
         sum += vals[i] * 2usize.pow(i as u32);
     }
-    match sum {
-        0 => {
-            return;
+    // if sum == 0 {
+    //     println!("000000000000");
+    // } else if sum == 15 {
+    //     println!("115555555555555555555");
+    // }
+
+    match &vals {
+        &[0, 0, 0, 0] => {
+            // return;
         }
-        15 => {
-            src[0..8].reverse();
-            return;
-        }
+        // [1, 1, 1, 1] => {
+        //     src[0..8].reverse();
+        //     return;
+        // }
         _ => {
             for i in 0..4 {
                 if vals[i] == 1 {
                     src.swap(i * 2, i * 2 + 1);
                 }
             }
-            parity_merge_two(src, swap, is_less);
-            parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
-            parity_merge_four(swap, src, is_less);
         }
     }
+
+    parity_merge_two(src, swap, is_less);
+    parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
+    parity_merge_four(swap, src, is_less);
     // v1 = cmp(pta + 0, pta + 1) > 0;
 	// 	v2 = cmp(pta + 2, pta + 3) > 0;
 	// 	v3 = cmp(pta + 4, pta + 5) > 0;

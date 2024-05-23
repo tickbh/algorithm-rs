@@ -65,16 +65,16 @@ fn main() {
 fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) {
     for _ in 0..1 {
         let mut rands: Vec<usize> = vec![];
-        for _ in 0..idx {
+        for i in 0..idx {
             rands.push(rand::random::<usize>() % (idx * 10));
-            // rands.push(idx * 10);
+            // rands.push(i * 10);
         }
         // println!("start array = {:?}", rands);
         // rands = vec![26, 139, 38, 29, 48, 203, 132, 97, 190, 117, 244, 159, 212, 174, 50, 209, 113, 206, 144, 153, 43, 95, 165, 244, 169];
         // for _ in 0..120 {
         //     rands.swap(rand::random::<usize>() % idx, rand::random::<usize>() % idx);
         // }
-        rands = vec![1, 92, 44, 31, 114, 61, 87, 27, 119, 116, 78, 111];
+        rands = vec![6, 47, 33, 67, 0, 74, 0, 91, 87, 85, 10];
         let mut ori = rands.clone();
         // println!("ori = {:?}", ori);
         let mut copy_rands = rands.clone();
@@ -84,8 +84,8 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         // quicksort(&mut rands, |a, b| a < b);
         *cost_sort_time += now.elapsed().as_nanos();
         let now = Instant::now();
-        // quad_sort(&mut copy_rands);
-        algorithm::quadsort::quad_sort(&mut copy_rands);
+        quad_sort(&mut copy_rands);
+        // algorithm::quadsort::quad_sort(&mut copy_rands);
         *cost_quad_time += now.elapsed().as_nanos();
         // if rands != copy_rands {
         //     println!("rands = {:?}", rands);

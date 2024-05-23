@@ -3,6 +3,7 @@ use std::process::id;
 
 struct QuadSort<T, F: Fn(&T, &T) -> bool> {
     is_less: F,
+    vals: [usize; 4],
     block: usize,
     mark: PhantomData<T>,
 }
@@ -107,7 +108,7 @@ pub fn create_swap<T>(caption: usize) -> Vec<T> {
 
 impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
     pub fn new(is_less: F) -> Self {
-        Self { is_less, block: 0, mark: PhantomData }
+        Self { is_less, block: 0, vals: [0, 0, 0, 0], mark: PhantomData }
     }
 
 
@@ -725,21 +726,51 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
     #[inline]
     pub fn parity_swap_eight(&mut self, src: &mut [T], swap: &mut [T])
     {
+        for i in 0..4 {
+            self.vals[i] = if check_less!(src, i * 2, i * 2 + 1, self.is_less) { 0 } else { 1 };
+            // sum += self.vals[i] * 2usize.pow(i as u32);
+        }
+        // if sum == 0 {
+        //     println!("000000000000");
+        // } else if sum == 15 {
+        //     println!("115555555555555555555");
+        // }
+
+        match &self.vals {
+            &[0, 0, 0, 0] => {
+                // return;
+            }
+            // [1, 1, 1, 1] => {
+            //     src[0..8].reverse();
+            //     return;
+            // }
+            _ => {
+                for i in 0..4 {
+                    if self.vals[i] == 1 {
+                        src.swap(i * 2, i * 2 + 1);
+                    }
+                }
+            }
+        }
+
+        self.parity_merge_two(src, swap);
+        self.parity_merge_two(&mut src[4..], &mut swap[4..]);
+        self.parity_merge_four(swap, src);
         // self.quad_swap_four(src);
         // self.quad_swap_four(&mut src[4..]);
         // do_set_elem!(&mut src[0], &mut swap[0], 8);
-        let is_less = &self.is_less;
-        for i in 0..4 {
-            try_exchange!(src, is_less, i * 2, i * 2 + 1);
-        }
-        // if (self.is_less)(&src[1], &src[2]) && (self.is_less)(&src[3], &src[4]) && (self.is_less)(&src[5], &src[6]) {
-        //     return;
+        // let is_less = &self.is_less;
+        // for i in 0..4 {
+        //     try_exchange!(src, is_less, i * 2, i * 2 + 1);
         // }
+        // // if (self.is_less)(&src[1], &src[2]) && (self.is_less)(&src[3], &src[4]) && (self.is_less)(&src[5], &src[6]) {
+        // //     return;
+        // // }
         
-        self.parity_merge_two(src, swap);
-        self.parity_merge_two(&mut src[4..], &mut swap[4..]);
+        // self.parity_merge_two(src, swap);
+        // self.parity_merge_two(&mut src[4..], &mut swap[4..]);
 
-        self.parity_merge_four(swap, src);
+        // self.parity_merge_four(swap, src);
     }
 
     #[inline]
