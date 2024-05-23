@@ -324,7 +324,7 @@ where
         do_set_elem!(&mut src[rl], &mut swap[index], len - rl);
     }
 
-    do_set_elem!(&mut swap[0], &mut src[0], len);
+    // do_set_elem!(&mut swap[0], &mut src[0], len);
 
     //
     // let mut ll = block - 1;
