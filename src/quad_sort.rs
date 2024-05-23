@@ -1,4 +1,5 @@
 use std::{alloc::{self, Layout}, fmt::Debug, marker::PhantomData, mem::{self, MaybeUninit}, ops::Range, ptr};
+use std::process::id;
 
 struct QuadSort<T, F: Fn(&T, &T) -> bool> {
     is_less: F,
@@ -14,6 +15,7 @@ struct QuadSort<T, F: Fn(&T, &T) -> bool> {
 macro_rules! check_less {
     ($src: expr, $s: expr, $e: expr, $func: expr) => {
         $func(&$src[$s], &$src[$e])
+        // unsafe { $func($src.get_unchecked($s), $src.get_unchecked($e)) }
     };
     ($src: expr, $s: expr, $dst: expr, $d: expr, $func: expr) => {
         $func(&$src[$s], &$dst[$d])
@@ -197,15 +199,12 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
 
                 if !is_less(&from[self.rl], &from[self.rr]) {
                     do_set_elem!(&mut from[self.rl], &mut dest[dr]);
-                    // if self.rl > 0 { self.rl -= 1; }
                     self.rl-=1;
                 } else {
                     do_set_elem!(&mut from[self.rr], &mut dest[dr]);
-                    // if self.rr > 0 { self.rr -= 1; }
                     self.rr-=1;
                 }
                 dr -= 1;
-                // if dr > 0 { dr -= 1; }
             };
         }
         
@@ -278,9 +277,7 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
 
         'outer: while rl.saturating_sub(ll) > 8 && rr.saturating_sub(lr) > 8 {
             while check_less!(from, ll + 7, lr, self.is_less) {
-                unsafe {
-                    ptr::copy_nonoverlapping(&mut from[ll], &mut dest[dl], 8);
-                }
+                do_set_elem!(&mut from[ll], &mut dest[dl], 8);
                 dl += 8;
                 ll += 8;
                 if rl - ll <= 8 {
@@ -289,9 +286,7 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
             }
 
             while check_big!(from, ll, lr + 7, self.is_less) {
-                unsafe {
-                    ptr::copy_nonoverlapping(&mut from[lr], &mut dest[dl], 8);
-                }
+                do_set_elem!(&mut from[lr], &mut dest[dl], 8);
                 dl += 8;
                 lr += 8;
                 if rr - lr <= 8 {
@@ -302,9 +297,7 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
             while check_less!(from, rl, rr - 7, self.is_less) {
                 dr -= 8;
                 rr -= 8;
-                unsafe {
-                    ptr::copy_nonoverlapping(&mut from[rr + 1], &mut dest[dr + 1], 8);
-                }
+                do_set_elem!(&mut from[rr + 1], &mut dest[dr + 1], 8);
                 if rr - lr <= 8 {
                     break 'outer;
                 }
@@ -314,9 +307,7 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
             while check_big!(from, rl - 7, rr, self.is_less) {
                 dr -= 8;
                 rl -= 8;
-                unsafe {
-                    ptr::copy_nonoverlapping(&mut from[rl + 1], &mut dest[dr + 1], 8);
-                }
+                do_set_elem!(&mut from[rl + 1], &mut dest[dr + 1], 8);
                 if rl - ll <= 8 {
                     break 'outer;
                 }
@@ -736,6 +727,10 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
     #[inline]
     pub fn parity_swap_eight(&mut self, src: &mut [T], swap: &mut [T])
     {
+        // self.quad_swap_four(src);
+        // self.quad_swap_four(&mut src[4..]);
+        // do_set_elem!(&mut src[0], &mut swap[0], 8);
+
         for i in 0..4 {
             try_exchange!(src, &self.is_less, i * 2, i * 2 + 1);
         }
@@ -763,7 +758,6 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
 
         self.parity_merge_four(src, swap);
         self.parity_merge_four(&mut src[8..], &mut swap[8..]);
-
         self.parity_merge(src, swap, 8, 8);
     }
 
@@ -790,27 +784,69 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
     }
 
     #[inline]
-    pub fn twice_unguarded_insert(&mut self, src: &mut [T], offset: usize)
+    pub fn twice_unguarded_insert(&mut self, src: &mut [T], swap: &mut [T], offset: usize)
     where
         F: Fn(&T, &T) -> bool
     {
+        // self.index = 0;
+        // for idx in offset..src.len() {
+        //     self.index = idx;
+        //     for j in 0..idx {
+        //         if (self.is_less)(&src[idx], &src[j]) {
+        //             self.index = j;
+        //             break;
+        //         }
+        //     }
+        //     if self.index == idx {
+        //         continue;
+        //     }
+        //     do_set_elem!(&mut src[self.index], &mut swap[1], idx - self.index);
+        //     do_set_elem!(&mut src[idx], &mut swap[0]);
+        //     do_set_elem!(&mut swap[0], &mut src[self.index], idx - self.index + 1);
+        // }
+        let mut index = 0;
         for idx in offset..src.len() {
-            if !try_exchange!(src, self.is_less, idx - 1, idx) {
+            index = idx;
+            for j in 0..idx {
+                if (self.is_less)(&src[idx], &src[j]) {
+                    index = j;
+                    break;
+                }
+            }
+            if index == idx {
                 continue;
             }
-
-            if (self.is_less)(&src[idx - 1], &src[0]) {
-                for j in (0..idx - 1).rev() {
-                    src.swap(j+1, j)
-                }
-            } else {
-                for j in (0..idx - 1).rev() {
-                    if !try_exchange!(src, self.is_less, j, j+1) {
-                        break;
-                    }
-                }
-            }
+            do_set_elem!(&mut src[index], &mut swap[1], idx - index);
+            do_set_elem!(&mut src[idx], &mut swap[0]);
+            do_set_elem!(&mut swap[0], &mut src[index], idx - index + 1);
         }
+        // let mut index = 0;
+        // for idx in offset..src.len() {
+        //     if !try_exchange!(src, self.is_less, idx - 1, idx) {
+        //         continue;
+        //     }
+            
+        //     for j in (0..idx - 1).rev() {
+        //         if (self.is_less)(&src[idx - 1], &src[j]) {
+        //             index = j;
+        //             break;
+        //         }
+        //         if !try_exchange!(src, self.is_less, j, j+1) {
+        //             break;
+        //         }
+        //     }
+        //     if (self.is_less)(&src[idx - 1], &src[0]) {
+        //         for j in (0..idx - 1).rev() {
+        //             src.swap(j+1, j)
+        //         }
+        //     } else {
+        //         for j in (0..idx - 1).rev() {
+        //             if !try_exchange!(src, self.is_less, j, j+1) {
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     #[inline]
@@ -822,23 +858,23 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
             }
             l if l < 8 => {
                 self.quad_swap_four(src);
-                self.twice_unguarded_insert(src, 4);
+                self.twice_unguarded_insert(src, swap, 4);
                 return;
             }
             l if l < 12 => {
                 self.parity_swap_eight(src, swap);
-                self.twice_unguarded_insert(src, 8);
+                self.twice_unguarded_insert(src, swap, 8);
                 return;
             }
             l if l < 16 => {
                 self.parity_swap_eight(src, swap);
                 self.less_24_tail_swap(&mut src[8..], swap);
-                self.partial_backward_merge(src, swap,8);
+                self.partial_backward_merge(src, swap, 8);
                 return;
             }
             l if l >= 16 && l < 24 => {
                 self.parity_swap_sixteen(src, swap);
-                self.twice_unguarded_insert(src, 16);
+                self.twice_unguarded_insert(src, swap, 16);
                 return;
             }
             _ => {
@@ -871,9 +907,9 @@ impl<T: Debug, F: Fn(&T, &T) -> bool> QuadSort<T, F> {
         index += quad3;
         self.less_24_tail_swap(&mut src[index..index + quad4], swap);
 
-        // if is_less(&src[quad1 - 1], &src[quad1]) 
-        // && is_less(&src[half1 - 1], &src[half1]) 
-        // && is_less(&src[index - 1], &src[index]) {
+        // if (self.is_less)(&src[quad1 - 1], &src[quad1]) 
+        // && (self.is_less)(&src[half1 - 1], &src[half1]) 
+        // && (self.is_less)(&src[index - 1], &src[index]) {
         //     return;
         // }
 

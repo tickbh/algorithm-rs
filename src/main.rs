@@ -29,6 +29,7 @@ fn main() {
     for _ in 0..times {
         let mut cost_sort_time = 0;
         let mut cost_quad_time = 0;
+        // for i in 100000..100001 {
         for i in 1..1999 {
             check_sort(i, &mut cost_sort_time, &mut cost_quad_time);
         }
@@ -46,7 +47,10 @@ fn main() {
         }
         return sum / (val.len() as u128);
     }
-    println!("time = {:?} cost sort time = {:?}us cost quad time = {:?}us", Instant::now(), aver(cost_sort_vec), aver(cost_quad_vec));
+    let aver_sort = aver(cost_sort_vec).max(1);
+    let aver_quad = aver(cost_quad_vec).max(1);
+
+    println!("time = {:?} cost sort time = {:?}us cost quad time = {:?}us, ratio = {:?}%", Instant::now(), aver_sort, aver_quad, (aver_quad - aver_sort) as f64 / aver_sort as f64 * 100f64);
 
 
     // let mut vec = Vec::with_capacity(120);
@@ -70,7 +74,7 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         // for _ in 0..120 {
         //     rands.swap(rand::random::<usize>() % idx, rand::random::<usize>() % idx);
         // }
-        // rands = vec![116, 83, 97, 48, 63, 34, 78, 34, 92, 101, 98, 110];
+        // rands = vec![84, 72, 127, 41, 71, 87, 12, 51, 59, 60, 30, 23, 96];
         let mut ori = rands.clone();
         // println!("ori = {:?}", ori);
         let mut copy_rands = rands.clone();
