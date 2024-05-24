@@ -1,4 +1,4 @@
-use std::{alloc::{self, Layout}, fmt::Debug, mem::{self, MaybeUninit}, ops::Range, ptr};
+use std::{alloc::{self}, cmp::Ordering, fmt::Debug, ptr};
 
 
 macro_rules! check_less {
@@ -9,7 +9,6 @@ macro_rules! check_less {
         $func(&$src[$s], &$dst[$d])
     };
 }
-
 
 macro_rules! check_big {
     ($src: expr, $s: expr, $e: expr, $func: expr) => {
@@ -128,7 +127,7 @@ where
 }
 
 #[inline]
-pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], mut left: usize, mut right: usize, is_less: &F)
+pub fn parity_merge<T, F>(dest: &mut [T], from: &mut [T], left: usize, right: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
@@ -489,7 +488,7 @@ where
 {
     let len = src.len();
     let swap_len = swap.len();
-        let mut index = 0;
+    let mut index;
     block *= 4;
     while block < len && block < swap_len {
         index = 0;
@@ -528,17 +527,17 @@ where
 }
 
 #[inline]
-pub fn rotate_merge_block<T, F>(src: &mut [T], swap: &mut [T], mut lblock: usize, mut right: usize, is_less: &F)
+pub fn rotate_merge_block<T, F>(src: &mut [T], swap: &mut [T], mut lblock: usize, right: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
     if check_less!(src, lblock - 1, lblock, is_less) {
         return;
     }
-    let mut rblock = lblock / 2;
+    let rblock = lblock / 2;
     lblock -= rblock;
     let left = monobound_binary_first(src, lblock + rblock, lblock, right, is_less);
-    right -= left;
+    // right -= left;
     
     if left > 0 {
         if lblock + left < swap.len() {
@@ -549,7 +548,7 @@ where
 }
 
 #[inline]
-pub fn rotate_merge<T, F>(src: &mut [T], swap: &mut [T], mut block: usize, is_less: &F)
+pub fn rotate_merge<T, F>(src: &mut [T], swap: &mut [T], block: usize, is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
@@ -670,79 +669,49 @@ pub fn parity_swap_eight<T, F>(src: &mut [T], swap: &mut [T], is_less: &F)
 where
     F: Fn(&T, &T) -> bool
 {
-    let mut vals = [0; 4];
-    let mut sum = 0;
-    for i in 0..4 {
-        vals[i] = if check_less!(src, i * 2, i * 2 + 1, is_less) { 0 } else { 1 };
-        sum += vals[i] * 2usize.pow(i as u32);
-    }
-    // if sum == 0 {
-    //     println!("000000000000");
-    // } else if sum == 15 {
-    //     println!("115555555555555555555");
-    // }
-
-    match &vals {
-        &[0, 0, 0, 0] => {
-            // return;
-        }
-        // [1, 1, 1, 1] => {
-        //     src[0..8].reverse();
-        //     return;
-        // }
-        _ => {
-            for i in 0..4 {
-                if vals[i] == 1 {
-                    src.swap(i * 2, i * 2 + 1);
-                }
-            }
-        }
-    }
-
-    parity_merge_two(src, swap, is_less);
-    parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
-    parity_merge_four(swap, src, is_less);
-    // v1 = cmp(pta + 0, pta + 1) > 0;
-	// 	v2 = cmp(pta + 2, pta + 3) > 0;
-	// 	v3 = cmp(pta + 4, pta + 5) > 0;
-	// 	v4 = cmp(pta + 6, pta + 7) > 0;
-
-	// 	switch (v1 + v2 * 2 + v3 * 4 + v4 * 8)
-	// 	{
-	// 		case 0:
-	// 			if (cmp(pta + 1, pta + 2) <= 0 && cmp(pta + 3, pta + 4) <= 0 && cmp(pta + 5, pta + 6) <= 0)
-	// 			{
-	// 				goto ordered;
-	// 			}
-	// 			FUNC(quad_swap_merge)(pta, swap, cmp);
-	// 			break;
-
-	// 		case 15:
-	// 			if (cmp(pta + 1, pta + 2) > 0 && cmp(pta + 3, pta + 4) > 0 && cmp(pta + 5, pta + 6) > 0)
-	// 			{
-	// 				pts = pta;
-	// 				goto reversed;
-	// 			}
-
-	// 		default:
-	// 		not_ordered:
-	// 			x = !v1; tmp = pta[x]; pta[0] = pta[v1]; pta[1] = tmp; pta += 2;
-	// 			x = !v2; tmp = pta[x]; pta[0] = pta[v2]; pta[1] = tmp; pta += 2;
-	// 			x = !v3; tmp = pta[x]; pta[0] = pta[v3]; pta[1] = tmp; pta += 2;
-	// 			x = !v4; tmp = pta[x]; pta[0] = pta[v4]; pta[1] = tmp; pta -= 6;
-
-	// 			FUNC(quad_swap_merge)(pta, swap, cmp);
-	// 	}
+    // let mut vals = [0; 4];
+    // let mut sum = 0;
     // for i in 0..4 {
-    //     try_exchange!(src, is_less, i * 2, i * 2 + 1);
+    //     vals[i] = if check_less!(src, i * 2, i * 2 + 1, is_less) { 0 } else { 1 };
+    //     sum += vals[i] * 2usize.pow(i as u32);
     // }
-    // // if is_less(&src[1], &src[2]) && is_less(&src[3], &src[4]) && is_less(&src[5], &src[6]) {
-    // //     return;
+    // // if sum == 0 {
+    // //     println!("000000000000");
+    // // } else if sum == 15 {
+    // //     println!("115555555555555555555");
     // // }
+
+    // match &vals {
+    //     &[0, 0, 0, 0] => {
+    //         // return;
+    //     }
+    //     // [1, 1, 1, 1] => {
+    //     //     src[0..8].reverse();
+    //     //     return;
+    //     // }
+    //     _ => {
+    //         for i in 0..4 {
+    //             if vals[i] == 1 {
+    //                 src.swap(i * 2, i * 2 + 1);
+    //             }
+    //         }
+    //     }
+    // }
 
     // parity_merge_two(src, swap, is_less);
     // parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
     // parity_merge_four(swap, src, is_less);
+    
+    for i in 0..4 {
+        try_exchange!(src, is_less, i * 2, i * 2 + 1);
+    }
+    // if is_less(&src[1], &src[2]) && is_less(&src[3], &src[4]) && is_less(&src[5], &src[6]) {
+    //     return;
+    // }
+
+    parity_merge_two(src, swap, is_less);
+    parity_merge_two(&mut src[4..], &mut swap[4..], is_less);
+    parity_merge_four(swap, src, is_less);
 }
 
 #[inline]
@@ -753,14 +722,12 @@ where
     for i in 0..4 {
         quad_swap_four(&mut src[i * 4..], &is_less);
     }
-    if is_less(&src[3], &src[4]) && is_less(&src[7], &src[8]) && is_less(&src[11], &src[12]) {
-        return;
-    }
+    // if is_less(&src[3], &src[4]) && is_less(&src[7], &src[8]) && is_less(&src[11], &src[12]) {
+    //     return;
+    // }
 
-    let (mut left, mut right) = (0, 0);
     parity_merge_four(src, swap, is_less);
     parity_merge_four(&mut src[8..], &mut swap[8..], is_less);
-
     parity_merge(src, swap, 8, 8, is_less);
 }
 
@@ -809,7 +776,7 @@ where
         //     do_set_elem!(&mut src[idx], &mut swap[0]);
         //     do_set_elem!(&mut swap[0], &mut src[index], idx - index + 1);
         // }
-        let mut index = 0;
+        let mut index;
         for idx in offset..src.len() {
             index = idx;
             for j in 0..idx {
@@ -904,13 +871,13 @@ where
 	    less_24_tail_swap(src, swap, is_less);
 	    return;
 	}
-    let mut half1 = src.len() / 2;
-    let mut quad1 = half1 / 2;
-    let mut quad2 = half1 - quad1;
+    let half1 = src.len() / 2;
+    let quad1 = half1 / 2;
+    let quad2 = half1 - quad1;
 
-    let mut half2 = src.len() - half1;
-    let mut quad3 = half2 / 2;
-    let mut quad4 = half2 - quad3;
+    let half2 = src.len() - half1;
+    let quad3 = half2 / 2;
+    let quad4 = half2 - quad3;
     
     let mut index = 0;
     tail_swap(&mut src[index..index + quad1], swap, is_less);
@@ -941,7 +908,7 @@ pub fn create_swap<T>(caption: usize) -> Vec<T> {
         // return vec;
         let mem = alloc::alloc(alloc::Layout::array::<T>(caption).unwrap_unchecked()) as *mut T;
         if !mem.is_null() {
-            let mut vec = Vec::from_raw_parts(mem, caption, caption);
+            let vec = Vec::from_raw_parts(mem, caption, caption);
             vec
         } else {
             let mut vec = Vec::with_capacity(32);
@@ -965,19 +932,14 @@ pub fn quad_sort_order_by<T, F>(src: &mut [T], is_less: F)
         _ => {
             let mut swap = create_swap::<T>(src.len());
             quad_swap(src, &mut swap, &is_less);
-            // if swap.len() != src.len() {
-            //     tail_merge(src, &mut swap[..32], 32, &is_less);
-            //     rotate_merge(src, &mut swap[..32], 64, &is_less);
-            //     return;
-            // }
+            if swap.len() != src.len() {
+                src.sort_by(|a, b| if is_less(a, b) { Ordering::Less } else { Ordering::Greater });
+                return;
+            }
             let block = quad_merge(src, &mut swap, 32, &is_less);
             rotate_merge(src, &mut swap, block, &is_less);
-            // Vec::from_raw_parts(ptr, length, capacity)
-            // Vec::with_capacity(capacity)
         }
     }
-
-    // recurse(v, &mut is_less, None, limit);
 }
 
 #[inline]

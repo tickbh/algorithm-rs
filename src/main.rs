@@ -1,11 +1,9 @@
-use std::cmp::Ordering;
-use std::cmp::Ordering::Less;
-use std::time::{self, Instant};
+use std::time::Instant;
 use rand;
 
 // use algorithm::quadsort::{quad_sort, tiny_sort};
 
-use algorithm::quad_sort::quad_sort;
+// use algorithm::quad_sort::quad_sort;
 
 fn main() {
     println!("Hello, world!");
@@ -30,7 +28,7 @@ fn main() {
         let mut cost_sort_time = 0;
         let mut cost_quad_time = 0;
         // for i in 100000..100001 {
-        for i in 1..9999 {
+        for i in 1..999 {
             check_sort(i, &mut cost_sort_time, &mut cost_quad_time);
         }
         cost_sort_vec.push(cost_sort_time);
@@ -65,7 +63,7 @@ fn main() {
 fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) {
     for _ in 0..1 {
         let mut rands: Vec<usize> = vec![];
-        for i in 0..idx {
+        for _i in 0..idx {
             rands.push(rand::random::<usize>() % (idx * 10));
             // rands.push(i * 10);
         }
@@ -75,7 +73,7 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         //     rands.swap(rand::random::<usize>() % idx, rand::random::<usize>() % idx);
         // }
         rands = vec![6, 47, 33, 67, 0, 74, 0, 91, 87, 85, 10];
-        let mut ori = rands.clone();
+        let _ori = rands.clone();
         // println!("ori = {:?}", ori);
         let mut copy_rands = rands.clone();
         let now = Instant::now();
@@ -84,8 +82,9 @@ fn check_sort(idx: usize, cost_sort_time: &mut u128, cost_quad_time: &mut u128) 
         // quicksort(&mut rands, |a, b| a < b);
         *cost_sort_time += now.elapsed().as_nanos();
         let now = Instant::now();
-        quad_sort(&mut copy_rands);
-        // algorithm::quadsort::quad_sort(&mut copy_rands);
+        // quad_sort(&mut copy_rands);
+        // algorithm::quad_sort::quad_sort(&mut copy_rands);
+        algorithm::quadsort::quad_sort(&mut copy_rands);
         *cost_quad_time += now.elapsed().as_nanos();
         // if rands != copy_rands {
         //     println!("rands = {:?}", rands);
