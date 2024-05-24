@@ -13,10 +13,12 @@ fn main() {
     v.put(1, 2);
     v.put(3, 2);
     v.put(4, 2);
+    v.get(&3);
     v.put(9999, 2);
     v.put(9999, 3);
     println!("vvvvvvvvvvv len = {}", v.len());
     println!("vvvvvvvvvvv len = {:?}", v.get(&9999));
+    println!("vvvvvvvvvvv len = {:?}", v.get(&4));
 
 
     // let mut words = vec!["cherry", "banana", "apple", "date"];
