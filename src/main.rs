@@ -5,8 +5,20 @@ use rand;
 
 // use algorithm::quad_sort::quad_sort;
 
+use algorithm::LruCache;
+
 fn main() {
     println!("Hello, world!");
+    let mut v = LruCache::new(2);
+    v.put(1, 2);
+    v.put(3, 2);
+    v.put(4, 2);
+    v.put(9999, 2);
+    v.put(9999, 3);
+    println!("vvvvvvvvvvv len = {}", v.len());
+    println!("vvvvvvvvvvv len = {:?}", v.get(&9999));
+
+
     // let mut words = vec!["cherry", "banana", "apple", "date"];
     // let mut copy_words = words.clone();
     // words.sort_by(|a, b| a.cmp(b)); // 默认就是按字典序排序
@@ -28,7 +40,7 @@ fn main() {
         let mut cost_sort_time = 0;
         let mut cost_quad_time = 0;
         // for i in 100000..100001 {
-        for i in 1..999 {
+        for i in 1..1999 {
             check_sort(i, &mut cost_sort_time, &mut cost_quad_time);
         }
         cost_sort_vec.push(cost_sort_time);

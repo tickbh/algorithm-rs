@@ -722,9 +722,9 @@ where
     for i in 0..4 {
         quad_swap_four(&mut src[i * 4..], &is_less);
     }
-    // if is_less(&src[3], &src[4]) && is_less(&src[7], &src[8]) && is_less(&src[11], &src[12]) {
-    //     return;
-    // }
+    if is_less(&src[3], &src[4]) && is_less(&src[7], &src[8]) && is_less(&src[11], &src[12]) {
+        return;
+    }
 
     parity_merge_four(src, swap, is_less);
     parity_merge_four(&mut src[8..], &mut swap[8..], is_less);
