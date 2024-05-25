@@ -36,6 +36,7 @@ impl<K: PartialEq> PartialEq for KeyRef<K> {
 
 impl<K: Eq> Eq for KeyRef<K> {}
 
+
 // 确保新类型与其内部类型的内存布局完全相同
 #[repr(transparent)]
 struct KeyWrapper<Q: ?Sized>(Q);
