@@ -11,19 +11,24 @@
 // Created Date: 2024/05/24 03:04:11
 
 use std::{
-    borrow::Borrow,
-    collections::{
+    borrow::Borrow, cell::OnceCell, collections::{
         hash_map::RandomState,
         HashMap, HashSet,
-    },
-    hash::{BuildHasher, Hash},
-    marker::PhantomData,
-    mem,
-    ptr::{self, NonNull},
+    }, hash::{BuildHasher, Hash}, marker::PhantomData, mem, ptr::{self, NonNull}
 };
 
 use super::{KeyRef, KeyWrapper};
 
+/// 避免hash表爆炸, 次数与频次映射 
+/// 如0:0, 1:1, 2:2, 3:3, 4:4, 5:5, 10:10, 11-20:11, 21-50:12,51-100:13, 100-500:14, 500-1000:15
+/// 1001-10000:16,10001-100000:17,100001:1000000:18等
+
+// fn get_freq_by_times(times: usize) -> u8 {
+
+//     static CACHE_MAP: HashMap<usize, u8> = OnceCell Lazy::new(|| HashMap::new());
+
+//     0
+// }
 
 struct LfuEntry<K, V> {
     pub key: mem::MaybeUninit<K>,
