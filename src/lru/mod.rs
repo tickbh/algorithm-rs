@@ -6,6 +6,7 @@ mod lru;
 
 pub use lru::LruCache;
 
+#[derive(Clone)]
 struct KeyRef<K> {
     pub k: *const K,
 }
@@ -51,9 +52,7 @@ impl<Q: ?Sized> KeyWrapper<Q> {
 
 impl<Q: ?Sized + Hash> Hash for KeyWrapper<Q> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        unsafe {
-            (self.0).hash(state);
-        }
+        (self.0).hash(state);
     }
 }
 
@@ -99,21 +98,6 @@ impl<K, V> LruEntry<K, V> {
             val: mem::MaybeUninit::new(v),
             prev: ptr::null_mut(),
             next: ptr::null_mut(),
-        }
-    }
-}
-
-impl<K, V> Drop for LruEntry<K, V> {
-    fn drop(&mut self) {
-        unsafe {
-            ptr::drop_in_place(self.key.as_mut_ptr());
-            ptr::drop_in_place(self.val.as_mut_ptr());
-            if !self.prev.is_null() {
-                drop(Box::from_raw(self.prev));
-            }
-            if !self.next.is_null() {
-                drop(Box::from_raw(self.next));
-            }
         }
     }
 }

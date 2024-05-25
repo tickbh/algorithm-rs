@@ -8,17 +8,39 @@ use rand;
 use algorithm::LruCache;
 
 fn main() {
-    println!("Hello, world!");
-    let mut v = LruCache::new(2);
-    v.put(1, 2);
-    v.put(3, 2);
-    v.put(4, 2);
-    v.get(&3);
-    v.put(9999, 2);
-    v.put(9999, 3);
-    println!("vvvvvvvvvvv len = {}", v.len());
-    println!("vvvvvvvvvvv len = {:?}", v.get(&9999));
-    println!("vvvvvvvvvvv len = {:?}", v.get(&4));
+    // let x: &i32 = unsafe { std::mem::MaybeUninit::uninit().assume_init() }; // undefined behavior! ⚠️
+
+    // println!("Hello, world! {:?} ===", x);
+    let mut lru = LruCache::new(3);
+    lru.insert(1, 2);
+    lru.insert(3, 3);
+    lru.insert(4, 4);
+    lru.get(&3);
+    lru.insert(9999, 2);
+    lru.insert(9999, 3);
+    println!("vvvvvvvvvvv len = {}", lru.len());
+    println!("vvvvvvvvvvv len = {:?}", lru.get(&9999));
+    println!("vvvvvvvvvvv len = {:?}", lru.get(&4));
+    println!("vvvvvvvvvvv len = {:?}", lru.get(&3));
+
+    for (k, v) in lru.iter() {
+        println!("k = {:?}", k);
+        println!("v = {:?}", v);
+    }
+    lru.retain(|_, v| *v % 2 == 0);
+    
+    for (k, v) in lru.iter() {
+        println!("k = {:?}", k);
+        println!("v = {:?}", v);
+    }
+    // for k in lru.keys() {
+    //     println!("keys = {:?}", k);
+    // }
+    // for k in lru.values() {
+    //     println!("values = {:?}", k);
+    // }
+    return;
+    // v.drain()
 
 
     // let mut words = vec!["cherry", "banana", "apple", "date"];
