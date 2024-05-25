@@ -3,8 +3,10 @@ use std::hash::{Hash, Hasher};
 use std::{mem, ptr};
 
 mod lru;
+mod lru_timesk;
 
 pub use lru::LruCache;
+pub use lru_timesk::LruTimeskCache;
 
 #[derive(Clone)]
 struct KeyRef<K> {

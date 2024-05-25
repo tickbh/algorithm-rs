@@ -31,9 +31,9 @@ use super::{KeyRef, KeyWrapper, LruEntry};
 /// # Examples
 /// 
 /// ```
-/// use algorithm::LruCache;
+/// use algorithm::LruTimeskCache;
 /// fn main() {
-///     let mut lru = LruCache::new(3);
+///     let mut lru = LruTimeskCache::new(3);
 ///     lru.insert("now", "ok");
 ///     lru.insert("hello", "algorithm");
 ///     lru.insert("this", "lru");
@@ -44,22 +44,22 @@ use super::{KeyRef, KeyWrapper, LruEntry};
 ///     assert_eq!(lru.get("now"), None);
 /// }
 /// ```
-pub struct LruCache<K, V, S> {
+pub struct LruTimeskCache<K, V, S> {
     map: HashMap<KeyRef<K>, NonNull<LruEntry<K, V>>, S>,
     cap: usize,
     head: *mut LruEntry<K, V>,
     tail: *mut LruEntry<K, V>,
 }
 
-impl<K: Hash + Eq, V> LruCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> LruTimeskCache<K, V, RandomState> {
     pub fn new(cap: usize) -> Self {
-        LruCache::with_hasher(cap, RandomState::new())
+        LruTimeskCache::with_hasher(cap, RandomState::new())
     }
 }
 
-impl<K, V, S> LruCache<K, V, S> {
+impl<K, V, S> LruTimeskCache<K, V, S> {
     /// 提供hash函数
-    pub fn with_hasher(cap: usize, hash_builder: S) -> LruCache<K, V, S> {
+    pub fn with_hasher(cap: usize, hash_builder: S) -> LruTimeskCache<K, V, S> {
         let map = HashMap::with_capacity_and_hasher(cap, hash_builder);
         let head = Box::into_raw(Box::new(LruEntry::new_empty()));
         let tail = Box::into_raw(Box::new(LruEntry::new_empty()));
@@ -84,9 +84,9 @@ impl<K, V, S> LruCache<K, V, S> {
     /// # Examples
     /// 
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("now", "ok");
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
@@ -136,9 +136,9 @@ impl<K, V, S> LruCache<K, V, S> {
     /// 遍历当前的所有值
     /// 
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     for (k, v) in lru.iter() {
@@ -155,9 +155,9 @@ impl<K, V, S> LruCache<K, V, S> {
     /// 遍历当前的key值
     /// 
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     let mut keys = lru.keys();
@@ -175,9 +175,9 @@ impl<K, V, S> LruCache<K, V, S> {
     /// 遍历当前的valus值
     /// 
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     let mut values = lru.values();
@@ -197,14 +197,14 @@ impl<K, V, S> LruCache<K, V, S> {
     }
 }
 
-impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
+impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
 
     /// 排出当前数据
     /// 
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     {
@@ -222,9 +222,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 弹出栈顶上的数据, 最近使用的数据
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.pop()==Some(("this", "lru")));
@@ -249,9 +249,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 弹出栈尾上的数据, 最久未使用的数据
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.pop_last()==Some(("hello", "algorithm")));
@@ -276,9 +276,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 获取key值相对应的value值, 根本hash判定
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.get(&"this") == Some(&"lru"));
@@ -303,9 +303,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 获取key值相对应的key和value值, 根本hash判定
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.get_key_value(&"this") == Some((&"this", &"lru")));
@@ -330,9 +330,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 获取key值相对应的value值, 根本hash判定, 可编辑被改变
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm".to_string());
     ///     lru.insert("this", "lru".to_string());
     ///     lru.get_mut(&"this").unwrap().insert_str(3, " good");
@@ -359,9 +359,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 插入值, 如果值重复将返回原来的数据
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.insert("this", "lru good") == Some(&"lru"));
@@ -400,9 +400,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 移除元素
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.remove("this") == Some(("this", "lru")));
@@ -452,9 +452,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 根据保留当前的元素, 返回false则表示抛弃元素
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     lru.insert("year", "2024");
@@ -483,10 +483,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     }
 }
 
-impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LruCache<K, V, S> {
+impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LruTimeskCache<K, V, S> {
     fn clone(&self) -> Self {
         
-        let mut new_lru = LruCache::with_hasher(self.cap, self.map.hasher().clone());
+        let mut new_lru = LruTimeskCache::with_hasher(self.cap, self.map.hasher().clone());
 
         for (key, value) in self.iter().rev() {
             new_lru.insert(key.clone(), value.clone());
@@ -496,7 +496,7 @@ impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LruCache<
     }
 }
 
-impl<K, V, S> Drop for LruCache<K, V, S> {
+impl<K, V, S> Drop for LruTimeskCache<K, V, S> {
     fn drop(&mut self) {
         self.clear();
 
@@ -543,7 +543,7 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
 }
 
 pub struct Drain<'a, K: 'a + Hash + Eq, V: 'a, S: BuildHasher> {
-    pub base: &'a mut LruCache<K, V, S>,
+    pub base: &'a mut LruTimeskCache<K, V, S>,
 }
 
 impl<'a, K: Hash + Eq, V, S: BuildHasher> ExactSizeIterator for Drain<'a, K, V, S> {
