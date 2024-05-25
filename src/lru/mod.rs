@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::{mem, ptr};
 
 mod lru;
@@ -103,3 +103,35 @@ impl<K, V> LruEntry<K, V> {
         }
     }
 }
+
+
+struct LruTimeskEntry<K, V> {
+    pub key: mem::MaybeUninit<K>,
+    pub val: mem::MaybeUninit<V>,
+    pub times: usize,
+    pub prev: *mut LruTimeskEntry<K, V>,
+    pub next: *mut LruTimeskEntry<K, V>,
+}
+
+impl<K, V> LruTimeskEntry<K, V> {
+    pub fn new_empty() -> Self {
+        LruTimeskEntry {
+            key: mem::MaybeUninit::uninit(),
+            val: mem::MaybeUninit::uninit(),
+            times: 0,
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+
+    pub fn new(k: K, v: V) -> Self {
+        LruTimeskEntry {
+            key: mem::MaybeUninit::new(k),
+            val: mem::MaybeUninit::new(v),
+            times: 0,
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+}
+

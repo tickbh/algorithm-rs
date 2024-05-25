@@ -60,6 +60,7 @@ impl<K: Hash + Eq, V> LruCache<K, V, RandomState> {
 impl<K, V, S> LruCache<K, V, S> {
     /// 提供hash函数
     pub fn with_hasher(cap: usize, hash_builder: S) -> LruCache<K, V, S> {
+        let cap = cap.max(1);
         let map = HashMap::with_capacity_and_hasher(cap, hash_builder);
         let head = Box::into_raw(Box::new(LruEntry::new_empty()));
         let tail = Box::into_raw(Box::new(LruEntry::new_empty()));
@@ -69,7 +70,7 @@ impl<K, V, S> LruCache<K, V, S> {
         }
         Self {
             map,
-            cap: cap.max(1),
+            cap,
             head,
             tail,
         }

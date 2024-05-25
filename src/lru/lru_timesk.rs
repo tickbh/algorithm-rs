@@ -22,9 +22,10 @@ use std::{
     ptr::NonNull,
 };
 
-use super::{KeyRef, KeyWrapper, LruEntry};
+use super::{KeyRef, KeyWrapper, LruTimeskEntry};
 
-/// 一个 LRU 缓存普通级的实现, 接口参照Hashmap保持一致
+/// 一个 LRU-K 缓存的实现, 接口参照Hashmap保持一致
+/// 当一个元素访问次数达到K次后, 将移入到新列表中, 防止被析构
 /// 设置容量之后将最大保持该容量大小的数据
 /// 后进的数据将会淘汰最久没有被访问的数据
 /// 
@@ -33,45 +34,63 @@ use super::{KeyRef, KeyWrapper, LruEntry};
 /// ```
 /// use algorithm::LruTimeskCache;
 /// fn main() {
-///     let mut lru = LruTimeskCache::new(3);
-///     lru.insert("now", "ok");
-///     lru.insert("hello", "algorithm");
+///     let mut lru = LruTimeskCache::new(3, 3);
 ///     lru.insert("this", "lru");
+///     for _ in 0..3 {
+///         let _ = lru.get("this");
+///     }
+///     lru.insert("hello", "algorithm");
 ///     lru.insert("auth", "tickbh");
 ///     assert!(lru.len() == 3);
-///     assert_eq!(lru.get("hello"), Some(&"algorithm"));
+///     lru.insert("auth1", "tickbh");
 ///     assert_eq!(lru.get("this"), Some(&"lru"));
-///     assert_eq!(lru.get("now"), None);
+///     assert_eq!(lru.get("hello"), None);
+///     assert!(lru.len() == 3);
 /// }
 /// ```
 pub struct LruTimeskCache<K, V, S> {
-    map: HashMap<KeyRef<K>, NonNull<LruEntry<K, V>>, S>,
+    map: HashMap<KeyRef<K>, NonNull<LruTimeskEntry<K, V>>, S>,
     cap: usize,
-    head: *mut LruEntry<K, V>,
-    tail: *mut LruEntry<K, V>,
+    times: usize,
+    head_times: *mut LruTimeskEntry<K, V>,
+    tail_times: *mut LruTimeskEntry<K, V>,
+    head: *mut LruTimeskEntry<K, V>,
+    tail: *mut LruTimeskEntry<K, V>,
+    lru_count: usize,
 }
 
 impl<K: Hash + Eq, V> LruTimeskCache<K, V, RandomState> {
-    pub fn new(cap: usize) -> Self {
-        LruTimeskCache::with_hasher(cap, RandomState::new())
+    pub fn new(cap: usize, times: usize) -> Self {
+        LruTimeskCache::with_hasher(cap, times, RandomState::new())
     }
 }
 
 impl<K, V, S> LruTimeskCache<K, V, S> {
     /// 提供hash函数
-    pub fn with_hasher(cap: usize, hash_builder: S) -> LruTimeskCache<K, V, S> {
+    pub fn with_hasher(cap: usize, times: usize, hash_builder: S) -> LruTimeskCache<K, V, S> {
+        let cap = cap.max(1);
         let map = HashMap::with_capacity_and_hasher(cap, hash_builder);
-        let head = Box::into_raw(Box::new(LruEntry::new_empty()));
-        let tail = Box::into_raw(Box::new(LruEntry::new_empty()));
+        let head = Box::into_raw(Box::new(LruTimeskEntry::new_empty()));
+        let tail = Box::into_raw(Box::new(LruTimeskEntry::new_empty()));
         unsafe {
             (*head).next = tail;
             (*tail).prev = head;
         }
+        let head_times = Box::into_raw(Box::new(LruTimeskEntry::new_empty()));
+        let tail_times = Box::into_raw(Box::new(LruTimeskEntry::new_empty()));
+        unsafe {
+            (*head_times).next = tail_times;
+            (*tail_times).prev = head_times;
+        }
         Self {
             map,
-            cap: cap.max(1),
+            cap,
+            times,
+            head_times,
+            tail_times,
             head,
             tail,
+            lru_count: 0,
         }
     }
 
@@ -86,7 +105,7 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("now", "ok");
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
@@ -102,6 +121,10 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
         unsafe {
             (*self.head).next = self.tail;
             (*self.tail).prev = self.head;
+            self.lru_count = 0;
+
+            (*self.head_times).next = self.tail_times;
+            (*self.tail_times).prev = self.head_times;
         }
     }
 
@@ -111,20 +134,33 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
     }
 
     /// 从队列中节点剥离
-    fn detach(&mut self, entry: *mut LruEntry<K, V>) {
+    fn detach(&mut self, entry: *mut LruTimeskEntry<K, V>) {
         unsafe {
             (*(*entry).prev).next = (*entry).next;
             (*(*entry).next).prev = (*entry).prev;
+
+            if (*entry).times < self.times {
+                self.lru_count -= 1;
+            }
         }
     }
 
     /// 加到队列中
-    fn attach(&mut self, entry: *mut LruEntry<K, V>) {
+    fn attach(&mut self, entry: *mut LruTimeskEntry<K, V>) {
         unsafe {
-            (*entry).next = (*self.head).next;
-            (*(*entry).next).prev = entry;
-            (*entry).prev = self.head;
-            (*self.head).next = entry;
+            (*entry).times += 1;
+            if (*entry).times < self.times {
+                self.lru_count += 1;
+                (*entry).next = (*self.head).next;
+                (*(*entry).next).prev = entry;
+                (*entry).prev = self.head;
+                (*self.head).next = entry;
+            } else {
+                (*entry).next = (*self.head_times).next;
+                (*(*entry).next).prev = entry;
+                (*entry).prev = self.head_times;
+                (*self.head_times).next = entry;
+            }
         }
     }
 
@@ -138,9 +174,12 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
-    ///     lru.insert("hello", "algorithm");
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("this", "lru");
+    ///     for _ in 0..3 {
+    ///         let _ = lru.get("this");
+    ///     }
+    ///     lru.insert("hello", "algorithm");
     ///     for (k, v) in lru.iter() {
     ///         assert!(k == &"hello" || k == &"this");
     ///         assert!(v == &"algorithm" || v == &"lru");
@@ -149,7 +188,14 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
     /// }
     /// ```
     pub fn iter(&self) -> Iter<'_, K, V> {
-        Iter { len: self.map.len(), ptr: self.head, end: self.tail, phantom: PhantomData }
+        Iter { 
+            len: self.map.len(), 
+            times_ptr: self.head_times,
+            times_end: self.tail_times,
+            ptr: self.head, 
+            end: self.tail, 
+            phantom: PhantomData 
+        }
     }
     
     /// 遍历当前的key值
@@ -157,9 +203,12 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
-    ///     lru.insert("hello", "algorithm");
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("this", "lru");
+    ///     for _ in 0..3 {
+    ///         let _ = lru.get("this");
+    ///     }
+    ///     lru.insert("hello", "algorithm");
     ///     let mut keys = lru.keys();
     ///     assert!(keys.next()==Some(&"this"));
     ///     assert!(keys.next()==Some(&"hello"));
@@ -177,9 +226,12 @@ impl<K, V, S> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
-    ///     lru.insert("hello", "algorithm");
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("this", "lru");
+    ///     for _ in 0..3 {
+    ///         let _ = lru.get("this");
+    ///     }
+    ///     lru.insert("hello", "algorithm");
     ///     let mut values = lru.values();
     ///     assert!(values.next()==Some(&"lru"));
     ///     assert!(values.next()==Some(&"algorithm"));
@@ -204,7 +256,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     {
@@ -224,7 +276,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.pop()==Some(("this", "lru")));
@@ -236,12 +288,20 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
             return None;
         }
         unsafe {
-            let node = (*self.head).next;
-            self.detach(node);
-            let key = KeyRef::new((*node).key.as_ptr());
-            let value = self.map.remove(&key).expect("must ok");
-            let node = *Box::from_raw(value.as_ptr());
-            let LruEntry { key, val, .. } = node;
+            let node = if self.len() - self.lru_count > 0 {
+                let node = (*self.head_times).next;
+                self.detach(node);
+                let key = KeyRef::new((*node).key.as_ptr());
+                let value = self.map.remove(&key).expect("must ok");
+                *Box::from_raw(value.as_ptr())
+            } else {
+                let node = (*self.head).next;
+                self.detach(node);
+                let key = KeyRef::new((*node).key.as_ptr());
+                let value = self.map.remove(&key).expect("must ok");
+                *Box::from_raw(value.as_ptr())
+            };
+            let LruTimeskEntry { key, val, .. } = node;
             Some((key.assume_init(), val.assume_init()))
         }
     }
@@ -251,7 +311,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.pop_last()==Some(("hello", "algorithm")));
@@ -263,12 +323,20 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
             return None;
         }
         unsafe {
-            let node = (*self.tail).prev;
-            self.detach(node);
-            let key = KeyRef::new((*node).key.as_ptr());
-            let value = self.map.remove(&key).expect("must ok");
-            let node = *Box::from_raw(value.as_ptr());
-            let LruEntry { key, val, .. } = node;
+            let node = if self.lru_count > 0 {
+                let node = (*self.tail).prev;
+                self.detach(node);
+                let key = KeyRef::new((*node).key.as_ptr());
+                let value = self.map.remove(&key).expect("must ok");
+                *Box::from_raw(value.as_ptr())
+            } else {
+                let node = (*self.tail_times).prev;
+                self.detach(node);
+                let key = KeyRef::new((*node).key.as_ptr());
+                let value = self.map.remove(&key).expect("must ok");
+                *Box::from_raw(value.as_ptr())
+            };
+            let LruTimeskEntry { key, val, .. } = node;
             Some((key.assume_init(), val.assume_init()))
         }
     }
@@ -278,7 +346,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.get(&"this") == Some(&"lru"));
@@ -305,7 +373,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.get_key_value(&"this") == Some((&"this", &"lru")));
@@ -332,7 +400,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm".to_string());
     ///     lru.insert("this", "lru".to_string());
     ///     lru.get_mut(&"this").unwrap().insert_str(3, " good");
@@ -361,7 +429,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.insert("this", "lru good") == Some(&"lru"));
@@ -402,7 +470,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.remove("this") == Some(("this", "lru")));
@@ -424,14 +492,22 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
         }
     }
 
-    fn replace_or_create_node(&mut self, k: K, v: V) -> (Option<(K, V)>, NonNull<LruEntry<K, V>>) {
+    fn replace_or_create_node(&mut self, k: K, v: V) -> (Option<(K, V)>, NonNull<LruTimeskEntry<K, V>>) {
         if self.len() == self.cap {
-            let old_key = KeyRef {
-                k: unsafe { &(*(*(*self.tail).prev).key.as_ptr()) },
+            let old_key = if self.lru_count > 0 {
+                KeyRef {
+                    k: unsafe { &(*(*(*self.tail).prev).key.as_ptr()) },
+                }
+            } else {
+                KeyRef {
+                    k: unsafe { &(*(*(*self.tail_times).prev).key.as_ptr()) },
+                }
             };
             let old_node = self.map.remove(&old_key).unwrap();
-            let node_ptr: *mut LruEntry<K, V> = old_node.as_ptr();
-
+            let node_ptr: *mut LruTimeskEntry<K, V> = old_node.as_ptr();
+            unsafe  {
+                (*node_ptr).times = 0;
+            }
             let replaced = unsafe {
                 (
                     mem::replace(&mut (*node_ptr).key, mem::MaybeUninit::new(k)).assume_init(),
@@ -444,7 +520,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
             (Some(replaced), old_node)
         } else {
             (None, unsafe {
-                NonNull::new_unchecked(Box::into_raw(Box::new(LruEntry::new(k, v))))
+                NonNull::new_unchecked(Box::into_raw(Box::new(LruTimeskEntry::new(k, v))))
             })
         }
     }
@@ -454,7 +530,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
     /// ```
     /// use algorithm::LruTimeskCache;
     /// fn main() {
-    ///     let mut lru = LruTimeskCache::new(3);
+    ///     let mut lru = LruTimeskCache::new(3, 2);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     lru.insert("year", "2024");
@@ -486,7 +562,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruTimeskCache<K, V, S> {
 impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LruTimeskCache<K, V, S> {
     fn clone(&self) -> Self {
         
-        let mut new_lru = LruTimeskCache::with_hasher(self.cap, self.map.hasher().clone());
+        let mut new_lru = LruTimeskCache::with_hasher(self.cap, self.times, self.map.hasher().clone());
 
         for (key, value) in self.iter().rev() {
             new_lru.insert(key.clone(), value.clone());
@@ -507,8 +583,10 @@ impl<K, V, S> Drop for LruTimeskCache<K, V, S> {
 
 pub struct Iter<'a, K: 'a, V: 'a> {
     len: usize,
-    ptr: *mut LruEntry<K, V>,
-    end: *mut LruEntry<K, V>,
+    times_ptr: *mut LruTimeskEntry<K, V>,
+    times_end: *mut LruTimeskEntry<K, V>,
+    ptr: *mut LruTimeskEntry<K, V>,
+    end: *mut LruTimeskEntry<K, V>,
     phantom: PhantomData<&'a usize>,
 }
 
@@ -520,8 +598,13 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
             return None;
         }
         unsafe {
-            self.ptr = (*self.ptr).next;
-            let node = self.ptr;
+            let node = if (*self.times_ptr).next != self.times_end {
+                self.times_ptr = (*self.times_ptr).next;
+                self.times_ptr
+            } else {
+                self.ptr = (*self.ptr).next;
+                self.ptr
+            };
             self.len -= 1;
             Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
         }
@@ -533,9 +616,15 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
         if self.len == 0 {
             return None;
         }
+        
         unsafe {
-            self.end = (*self.end).prev;
-            let node = self.end;
+            let node = if (*self.end).prev != self.ptr {
+                self.end = (*self.end).prev;
+                self.end
+            } else {
+                self.times_end = (*self.times_end).prev;
+                self.times_end
+            };
             self.len -= 1;
             Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
         }
