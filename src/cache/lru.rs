@@ -19,10 +19,39 @@ use std::{
     hash::{BuildHasher, Hash},
     marker::PhantomData,
     mem,
-    ptr::NonNull,
+    ptr::{self, NonNull},
 };
 
-use super::{KeyRef, KeyWrapper, LruEntry};
+use super::{KeyRef, KeyWrapper};
+
+
+struct LruEntry<K, V> {
+    pub key: mem::MaybeUninit<K>,
+    pub val: mem::MaybeUninit<V>,
+    pub prev: *mut LruEntry<K, V>,
+    pub next: *mut LruEntry<K, V>,
+}
+
+impl<K, V> LruEntry<K, V> {
+    pub fn new_empty() -> Self {
+        LruEntry {
+            key: mem::MaybeUninit::uninit(),
+            val: mem::MaybeUninit::uninit(),
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+
+    pub fn new(k: K, v: V) -> Self {
+        LruEntry {
+            key: mem::MaybeUninit::new(k),
+            val: mem::MaybeUninit::new(v),
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+}
+
 
 /// 一个 LRU 缓存普通级的实现, 接口参照Hashmap保持一致
 /// 设置容量之后将最大保持该容量大小的数据

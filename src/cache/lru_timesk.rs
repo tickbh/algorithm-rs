@@ -19,10 +19,43 @@ use std::{
     hash::{BuildHasher, Hash},
     marker::PhantomData,
     mem,
-    ptr::NonNull,
+    ptr::{self, NonNull},
 };
 
-use super::{KeyRef, KeyWrapper, LruTimeskEntry};
+use super::{KeyRef, KeyWrapper};
+
+
+
+struct LruTimeskEntry<K, V> {
+    pub key: mem::MaybeUninit<K>,
+    pub val: mem::MaybeUninit<V>,
+    pub times: usize,
+    pub prev: *mut LruTimeskEntry<K, V>,
+    pub next: *mut LruTimeskEntry<K, V>,
+}
+
+impl<K, V> LruTimeskEntry<K, V> {
+    pub fn new_empty() -> Self {
+        LruTimeskEntry {
+            key: mem::MaybeUninit::uninit(),
+            val: mem::MaybeUninit::uninit(),
+            times: 0,
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+
+    pub fn new(k: K, v: V) -> Self {
+        LruTimeskEntry {
+            key: mem::MaybeUninit::new(k),
+            val: mem::MaybeUninit::new(v),
+            times: 0,
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+}
+
 
 /// 一个 LRU-K 缓存的实现, 接口参照Hashmap保持一致
 /// 当一个元素访问次数达到K次后, 将移入到新列表中, 防止被析构
