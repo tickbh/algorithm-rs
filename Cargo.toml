@@ -1,17 +1,16 @@
 [package]
 name = "algorithm"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
 description = " http https proxy by rust"
 repository = "https://github.com/tickbh/algorithm"
 license = "Apache-2.0"
-keywords = ["algorithm", "quadsort"]
+keywords = ["algorithm", "lru", "lfu", "lru-k"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rand="0.8.5"
 lazy_static="1.4.0"
 
 [dev-dependencies]

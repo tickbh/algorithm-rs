@@ -10,25 +10,24 @@
 // -----
 // Created Date: 2024/05/24 03:04:11
 
-use core::time;
 use std::{
-    borrow::Borrow, cell::OnceCell, collections::{
-        hash_map::RandomState,
-        HashMap, HashSet,
-    }, hash::{BuildHasher, Hash}, marker::PhantomData, mem, ptr::{self, NonNull}, sync::{Once, ONCE_INIT}
+    borrow::Borrow,
+    collections::{hash_map::RandomState, HashMap, HashSet},
+    hash::{BuildHasher, Hash},
+    mem,
+    ptr::NonNull,
 };
 
 use lazy_static::lazy_static;
 
 use super::{KeyRef, KeyWrapper};
 
-const MAX_FREQ: u8 = 19;
-/// 避免hash表爆炸, 次数与频次映射 
+/// 避免hash表爆炸, 次数与频次映射
 /// 如0:0, 1:1, 2:2, 3:3, 4:4, 5:5, 10:10, 11-20:11, 21-50:12,51-100:13, 100-500:14, 500-1000:15
 /// 1001-10000:16,10001-100000:17,100001:1000000:18等
 fn get_freq_by_times(times: usize) -> u8 {
-    lazy_static!(
-        static ref CACHE_MAP: HashMap<usize, u8>= {
+    lazy_static! {
+        static ref CACHE_MAP: HashMap<usize, u8> = {
             let mut cache = HashMap::new();
             for i in 0..=10 {
                 cache.insert(i, i as u8);
@@ -50,7 +49,7 @@ fn get_freq_by_times(times: usize) -> u8 {
             }
             cache
         };
-    );
+    };
     if let Some(k) = CACHE_MAP.get(&times) {
         return *k;
     }
@@ -69,62 +68,40 @@ struct LfuEntry<K, V> {
     pub key: mem::MaybeUninit<K>,
     pub val: mem::MaybeUninit<V>,
     pub counter: usize,
-    pub prev: *mut LfuEntry<K, V>,
-    pub next: *mut LfuEntry<K, V>,
 }
 
 impl<K, V> LfuEntry<K, V> {
-    pub fn new_empty() -> Self {
-        LfuEntry {
-            key: mem::MaybeUninit::uninit(),
-            val: mem::MaybeUninit::uninit(),
-            counter: 0,
-            prev: ptr::null_mut(),
-            next: ptr::null_mut(),
-        }
-    }
-
-    pub fn new(k: K, v: V) -> Self {
-        LfuEntry {
-            key: mem::MaybeUninit::new(k),
-            val: mem::MaybeUninit::new(v),
-            counter: 0,
-            prev: ptr::null_mut(),
-            next: ptr::null_mut(),
-        }
-    }
-
     pub fn new_counter(k: K, v: V, counter: usize) -> Self {
         LfuEntry {
             key: mem::MaybeUninit::new(k),
             val: mem::MaybeUninit::new(v),
             counter,
-            prev: ptr::null_mut(),
-            next: ptr::null_mut(),
         }
     }
 
     pub fn key_ref(&self) -> KeyRef<K> {
-        unsafe {
-            KeyRef { k: self.key.as_ptr() }
+        KeyRef {
+            k: self.key.as_ptr(),
         }
     }
 }
 
-
-/// 一个 LRU 缓存普通级的实现, 接口参照Hashmap保持一致
-/// 设置容量之后将最大保持该容量大小的数据
-/// 后进的数据将会淘汰最久没有被访问的数据
-/// 
+/// 一个 lfu(least frequently used/最不经常使用页置换算法 ) 缓存的实现, 接口参照Hashmap保持一致
+/// 根据元素的访问次数进行按分组进行淘汰测试
+/// 在访问次数达到设定值时将全体所有的访问次数下降1处理
+/// 以使高频数据在一定时间后将过期处理
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use algorithm::LfuCache;
 /// fn main() {
 ///     let mut lru = LfuCache::new(3);
-///     lru.insert("now", "ok");
 ///     lru.insert("hello", "algorithm");
 ///     lru.insert("this", "lru");
+///     let _ = lru.get("hello");
+///     let _ = lru.get("this");
+///     lru.insert("now", "ok");
 ///     lru.insert("auth", "tickbh");
 ///     assert!(lru.len() == 3);
 ///     assert_eq!(lru.get("hello"), Some(&"algorithm"));
@@ -137,9 +114,11 @@ pub struct LfuCache<K, V, S> {
     times_map: HashMap<u8, HashSet<KeyRef<K>>>,
     cap: usize,
     max_freq: u8,
+    visit_count: usize,
+
     default_count: usize,
     reduce_count: usize,
-    visit_count: usize,
+    reduce_step: usize,
 }
 
 impl<K: Hash + Eq, V> LfuCache<K, V, RandomState> {
@@ -159,11 +138,75 @@ impl<K, V, S> LfuCache<K, V, S> {
             visit_count: 0,
             max_freq: 0,
             reduce_count: 1000000,
+            reduce_step: 100,
             default_count: 5,
             cap,
         }
     }
 
+    /// 设定初始进入列表中默认的访问次数，防止出现一进入就权重过低的情况
+    ///
+    /// ```
+    /// use algorithm::LfuCache;
+    /// fn main() {
+    ///     let mut lru = LfuCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     assert!(lru.get_visit(&"this") == Some(5));
+    ///     assert!(lru.get_visit(&"hello") == Some(5));
+    /// }
+    /// ```
+    pub fn set_default_count(&mut self, default_count: usize) {
+        self.default_count = default_count;
+    }
+
+    pub fn get_default_count(&self) -> usize {
+        return self.default_count;
+    }
+
+    
+    /// 每多少访问存储中触发值，
+    /// 如设置100次，那么将100次发生get或者put时将触发一次调整
+    /// 每次调整时间复杂度为O(n)
+    ///
+    /// ```
+    /// use algorithm::LfuCache;
+    /// fn main() {
+    ///     let mut lru = LfuCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     lru.set_reduce_count(100);
+    ///     lru.set_reduce_step(100);
+    ///     assert!(lru.get_visit(&"hello") == Some(5));
+    ///     assert!(lru.get_visit(&"this") == Some(5));
+    ///     for _ in 0..100 {
+    ///         let _ = lru.get("this");
+    ///     }
+    ///     assert!(lru.get_visit(&"this") == Some(5));
+    ///     assert!(lru.get_visit(&"hello") == Some(0));
+    ///     let mut keys = lru.keys();
+    ///     assert!(keys.next()==Some(&"this"));
+    ///     assert!(keys.next()==Some(&"hello"));
+    ///     assert!(keys.next() == None);
+    /// }
+    /// ```
+    pub fn set_reduce_count(&mut self, reduce_count: usize) {
+        self.reduce_count = reduce_count;
+    }
+
+    pub fn get_reduce_count(&self) -> usize {
+        return self.reduce_count;
+    }
+
+    /// 每次触发访问减少的值，如设置100，那所有元素中的访问次数将减少100
+    /// 用于长时间不访问的数据能在一定时间后过期
+    pub fn set_reduce_step(&mut self, reduce_step: usize) {
+        self.reduce_step = reduce_step;
+    }
+
+    pub fn get_reduce_step(&self) -> usize {
+        return self.reduce_step;
+    }
     /// 获取当前容量
     pub fn capacity(&self) -> usize {
         self.cap
@@ -171,7 +214,7 @@ impl<K, V, S> LfuCache<K, V, S> {
 
     /// 清理当前数据
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use algorithm::LfuCache;
     /// fn main() {
@@ -203,7 +246,7 @@ impl<K, V, S> LfuCache<K, V, S> {
     }
 
     /// 遍历当前的所有值
-    /// 
+    ///
     /// ```
     /// use algorithm::LfuCache;
     /// fn main() {
@@ -220,15 +263,16 @@ impl<K, V, S> LfuCache<K, V, S> {
     pub fn iter(&self) -> Iter<'_, K, V, S> {
         Iter::new(self)
     }
-    
+
     /// 遍历当前的key值
-    /// 
+    ///
     /// ```
     /// use algorithm::LfuCache;
     /// fn main() {
     ///     let mut lru = LfuCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
+    ///     let _ = lru.get("this");
     ///     let mut keys = lru.keys();
     ///     assert!(keys.next()==Some(&"this"));
     ///     assert!(keys.next()==Some(&"hello"));
@@ -236,19 +280,18 @@ impl<K, V, S> LfuCache<K, V, S> {
     /// }
     /// ```
     pub fn keys(&self) -> Keys<'_, K, V, S> {
-        Keys {
-            iter: self.iter()
-        }
+        Keys { iter: self.iter() }
     }
-    
+
     /// 遍历当前的valus值
-    /// 
+    ///
     /// ```
     /// use algorithm::LfuCache;
     /// fn main() {
     ///     let mut lru = LfuCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
+    ///     let _ = lru.get("this");
     ///     let mut values = lru.values();
     ///     assert!(values.next()==Some(&"lru"));
     ///     assert!(values.next()==Some(&"algorithm"));
@@ -256,9 +299,7 @@ impl<K, V, S> LfuCache<K, V, S> {
     /// }
     /// ```
     pub fn values(&self) -> Values<'_, K, V, S> {
-        Values {
-            iter: self.iter()
-        }
+        Values { iter: self.iter() }
     }
 
     pub fn hasher(&self) -> &S {
@@ -267,39 +308,82 @@ impl<K, V, S> LfuCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
-
-
     /// 从队列中节点剥离
     fn detach(&mut self, entry: *mut LfuEntry<K, V>) {
         unsafe {
             let freq = get_freq_by_times((*entry).counter);
-            self.times_map.entry(freq).and_modify(|v| { v.remove(&(*entry).key_ref()); });
+            self.times_map.entry(freq).and_modify(|v| {
+                v.remove(&(*entry).key_ref());
+            });
         }
     }
 
     /// 加到队列中
     fn attach(&mut self, entry: *mut LfuEntry<K, V>) {
         unsafe {
+            self.visit_count += 1;
+            (*entry).counter += 1;
             let freq = get_freq_by_times((*entry).counter);
-            self.times_map.entry(freq).or_default().insert((*entry).key_ref());
+            self.max_freq = self.max_freq.max(freq);
+            self.times_map
+                .entry(freq)
+                .or_default()
+                .insert((*entry).key_ref());
+
+            self.check_reduce();
         }
     }
 
+    fn check_reduce(&mut self) {
+        if self.visit_count >= self.reduce_count {
+            let mut max = 0;
+            for (k, v) in self.map.iter() {
+                unsafe {
+                    let node = v.as_ptr();
+                    let freq = get_freq_by_times((*node).counter);
+                    (*node).counter = (*node).counter.saturating_sub(self.reduce_step);
+                    let next = get_freq_by_times((*node).counter);
+                    max = max.max(next);
+                    if freq != next {
+                        self.times_map.entry(freq).and_modify(|v| {
+                            v.remove(k);
+                        });
+                        self.times_map
+                            .entry(next)
+                            .or_default()
+                            .insert((*node).key_ref());
+                    }
+                }
+            }
+            self.max_freq = max;
+            self.visit_count = 0;
+        }
+    }
 
     /// 加到队列中
     fn reattach(&mut self, entry: *mut LfuEntry<K, V>) {
         unsafe {
+            self.visit_count += 1;
             let freq = get_freq_by_times((*entry).counter);
             (*entry).counter += 1;
             let next_freq = get_freq_by_times((*entry).counter);
+            self.max_freq = self.max_freq.max(next_freq);
             if freq != next_freq {
-                self.times_map.entry(freq).and_modify(|v| { v.remove(&(*entry).key_ref()); });
-                self.times_map.entry(next_freq).or_default().insert((*entry).key_ref());
+                self.times_map.entry(freq).and_modify(|v| {
+                    v.remove(&(*entry).key_ref());
+                });
+                self.times_map
+                    .entry(next_freq)
+                    .or_default()
+                    .insert((*entry).key_ref());
             }
+
+
+            self.check_reduce();
         }
     }
     /// 排出当前数据
-    /// 
+    ///
     /// ```
     /// use algorithm::LfuCache;
     /// fn main() {
@@ -317,7 +401,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         Drain { base: self }
     }
 
-
     /// 弹出栈顶上的数据, 最近使用的数据
     ///
     /// ```
@@ -326,6 +409,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     let mut lru = LfuCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
+    ///     let _ = lru.get("this");
     ///     assert!(lru.pop()==Some(("this", "lru")));
     ///     assert!(lru.len() == 1);
     /// }
@@ -344,7 +428,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     let value = self.map.remove(&key).expect("must ok");
                     let node = *Box::from_raw(value.as_ptr());
                     let LfuEntry { key, val, .. } = node;
-                    return Some((key.assume_init(), val.assume_init()))
+                    return Some((key.assume_init(), val.assume_init()));
                     // val.take(value)
                 }
             }
@@ -360,6 +444,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     let mut lru = LfuCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
+    ///     let _ = lru.get("this");
     ///     assert!(lru.pop_last()==Some(("hello", "algorithm")));
     ///     assert!(lru.len() == 1);
     /// }
@@ -368,7 +453,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         if self.len() == 0 {
             return None;
         }
-        
+
         unsafe {
             for i in 0..=self.max_freq {
                 if let Some(val) = self.times_map.get_mut(&i) {
@@ -379,11 +464,37 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     let value = self.map.remove(&key).expect("must ok");
                     let node = *Box::from_raw(value.as_ptr());
                     let LfuEntry { key, val, .. } = node;
-                    return Some((key.assume_init(), val.assume_init()))
+                    return Some((key.assume_init(), val.assume_init()));
                     // val.take(value)
                 }
             }
             None
+        }
+    }
+
+
+    /// 获取key值相对应的value值, 根本hash判定
+    ///
+    /// ```
+    /// use algorithm::LfuCache;
+    /// fn main() {
+    ///     let mut lru = LfuCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     assert!(lru.get_visit(&"this") == Some(5));
+    /// }
+    /// ```
+    pub fn get_visit<Q>(&mut self, k: &Q) ->  Option<usize>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        match self.map.get(KeyWrapper::from_ref(k)) {
+            Some(l) => {
+                let node = l.as_ptr();
+                unsafe { Some((*node).counter) }
+            }
+            None => None,
         }
     }
 
@@ -539,34 +650,37 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
 
     fn replace_or_create_node(&mut self, k: K, v: V) -> (Option<(K, V)>, NonNull<LfuEntry<K, V>>) {
         if self.len() == self.cap {
-
-            unsafe {
-                for i in 0..self.max_freq {
-                    if let Some(val) = self.times_map.get_mut(&i) {
-                        if val.is_empty() {
-                            continue;
-                        }
-                        let key = val.drain().next().expect("ok");
-                        let old_node = self.map.remove(&key).unwrap();
-                        let node_ptr: *mut LfuEntry<K, V> = old_node.as_ptr();
-            
-                        let replaced = unsafe {
-                            (
-                                mem::replace(&mut (*node_ptr).key, mem::MaybeUninit::new(k)).assume_init(),
-                                mem::replace(&mut (*node_ptr).val, mem::MaybeUninit::new(v)).assume_init(),
-                            )
-                        };
-                        unsafe {
-                            (*node_ptr).counter = self.default_count;
-                        }
-                        return (Some(replaced), old_node)
+            for i in 0..self.max_freq {
+                if let Some(val) = self.times_map.get_mut(&i) {
+                    if val.is_empty() {
+                        continue;
                     }
+                    let key = val.drain().next().expect("ok");
+                    let old_node = self.map.remove(&key).unwrap();
+                    let node_ptr: *mut LfuEntry<K, V> = old_node.as_ptr();
+
+                    let replaced = unsafe {
+                        (
+                            mem::replace(&mut (*node_ptr).key, mem::MaybeUninit::new(k))
+                                .assume_init(),
+                            mem::replace(&mut (*node_ptr).val, mem::MaybeUninit::new(v))
+                                .assume_init(),
+                        )
+                    };
+                    unsafe {
+                        (*node_ptr).counter = self.default_count.saturating_sub(1);
+                    }
+                    return (Some(replaced), old_node);
                 }
             }
             unreachable!()
         } else {
             (None, unsafe {
-                NonNull::new_unchecked(Box::into_raw(Box::new(LfuEntry::new_counter(k, v, self.default_count))))
+                NonNull::new_unchecked(Box::into_raw(Box::new(LfuEntry::new_counter(
+                    k,
+                    v,
+                    self.default_count.saturating_sub(1),
+                ))))
             })
         }
     }
@@ -606,7 +720,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
 
 impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LfuCache<K, V, S> {
     fn clone(&self) -> Self {
-        
         let mut new_lru = LfuCache::with_hasher(self.cap, self.map.hasher().clone());
 
         for (key, value) in self.iter().rev() {
@@ -620,75 +733,96 @@ impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LfuCache<
 impl<K, V, S> Drop for LfuCache<K, V, S> {
     fn drop(&mut self) {
         self.clear();
-
     }
 }
 
 pub struct Iter<'a, K: 'a, V: 'a, S> {
     len: usize,
     now_freq: u8,
-    now_keys: Vec<KeyRef<K>>,
+    now_keys: Option<Vec<KeyRef<K>>>,
     base: &'a LfuCache<K, V, S>,
 }
 
 impl<'a, K, V, S> Iter<'a, K, V, S> {
     pub fn new(base: &'a LfuCache<K, V, S>) -> Self {
-        if base.len() == 0 {
-            Self {
-                len: 0,
-                now_freq: 0,
-                now_keys: vec![],
-                base
-            }
-        } else {
-            let mut now_keys = vec![];
-            for i in (0..=base.max_freq).rev() {
-                if let Some(s) = base.times_map.get(&i) {
-                    if s.len() != 0 {
-                        now_keys = s.iter().map(|s| KeyRef { k: s.k }).collect();
-                        return Self {
-                            len: base.len(),
-                            now_freq: i,
-                            now_keys,
-                            base
-                        }
-                    }
-                }
-            }
-            unreachable!()
+        Self {
+            len: base.len(),
+            now_freq: base.max_freq,
+            now_keys: None,
+            base,
         }
     }
 }
 
-impl<'a, K, V, S> Iterator for Iter<'a, K, V, S> {
+impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Iter<'a, K, V, S> {
     type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
         }
-        // unsafe {
-        //     self.ptr = (*self.ptr).next;
-        //     let node = self.ptr;
-        //     self.len -= 1;
-        //     Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
-        // }
-        None
+
+        self.len -= 1;
+
+        if self.now_keys.is_none() {
+            for i in (0..=self.now_freq).rev() {
+                if let Some(s) = self.base.times_map.get(&i) {
+                    if s.len() != 0 {
+                        self.now_freq = i.saturating_sub(1);
+                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.k }).collect());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(keys) = &mut self.now_keys {
+            unsafe {
+                let key = keys.pop().unwrap();
+                let val = self.base.map.get(&key).unwrap();
+                let node = val.as_ptr();
+                if keys.len() == 0 {
+                    self.now_keys = None;
+                }
+                return Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()));
+            }
+        }
+        return None;
     }
 }
 
-impl<'a, K, V, S> DoubleEndedIterator for Iter<'a, K, V, S> {
+impl<'a, K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for Iter<'a, K, V, S> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
         }
-        // unsafe {
-        //     self.end = (*self.end).prev;
-        //     let node = self.end;
-        //     self.len -= 1;
-        //     Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
-        // }
-        None
+
+        self.len -= 1;
+
+        if self.now_keys.is_none() {
+            for i in 0..=self.now_freq {
+                if let Some(s) = self.base.times_map.get(&i) {
+                    if s.len() != 0 {
+                        self.now_freq = i.saturating_sub(1);
+                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.k }).collect());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(keys) = &mut self.now_keys {
+            unsafe {
+                let key = keys.pop().unwrap();
+                let val = self.base.map.get(&key).unwrap();
+                let node = val.as_ptr();
+                if keys.len() == 0 {
+                    self.now_keys = None;
+                }
+                return Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()));
+            }
+        }
+        return None;
     }
 }
 
@@ -717,29 +851,22 @@ pub struct Keys<'a, K, V, S> {
     iter: Iter<'a, K, V, S>,
 }
 
-impl<'a, K, V, S> Iterator for Keys<'a, K, V, S> {
-    type Item=&'a K;
+impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Keys<'a, K, V, S> {
+    type Item = &'a K;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(k, _)| k)
     }
 }
 
-impl<'a, K, V, S> ExactSizeIterator for Keys<'a, K, V, S> {
-}
-
-
 pub struct Values<'a, K, V, S> {
     iter: Iter<'a, K, V, S>,
 }
 
-impl<'a, K, V, S> Iterator for Values<'a, K, V, S> {
-    type Item=&'a V;
+impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Values<'a, K, V, S> {
+    type Item = &'a V;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(_, v)| v)
     }
-}
-
-impl<'a, K, V, S> ExactSizeIterator for Values<'a, K, V, S> {
 }
