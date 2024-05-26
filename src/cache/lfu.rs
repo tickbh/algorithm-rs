@@ -118,7 +118,6 @@ pub struct LfuCache<K, V, S> {
 
     default_count: usize,
     reduce_count: usize,
-    reduce_step: usize,
 }
 
 impl<K: Hash + Eq, V> LfuCache<K, V, RandomState> {
@@ -138,7 +137,6 @@ impl<K, V, S> LfuCache<K, V, S> {
             visit_count: 0,
             max_freq: 0,
             reduce_count: 1000000,
-            reduce_step: 100,
             default_count: 5,
             cap,
         }
@@ -167,6 +165,7 @@ impl<K, V, S> LfuCache<K, V, S> {
     
     /// 每多少访问存储中触发值，
     /// 如设置100次，那么将100次发生get或者put时将触发一次调整
+    /// 每次衰减将进行/2进行衰减，如原来100次衰减后将变成50次
     /// 每次调整时间复杂度为O(n)
     ///
     /// ```
@@ -176,14 +175,13 @@ impl<K, V, S> LfuCache<K, V, S> {
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     lru.set_reduce_count(100);
-    ///     lru.set_reduce_step(100);
     ///     assert!(lru.get_visit(&"hello") == Some(5));
     ///     assert!(lru.get_visit(&"this") == Some(5));
-    ///     for _ in 0..100 {
+    ///     for _ in 0..98 {
     ///         let _ = lru.get("this");
     ///     }
-    ///     assert!(lru.get_visit(&"this") == Some(5));
-    ///     assert!(lru.get_visit(&"hello") == Some(0));
+    ///     assert!(lru.get_visit(&"this") == Some(51));
+    ///     assert!(lru.get_visit(&"hello") == Some(2));
     ///     let mut keys = lru.keys();
     ///     assert!(keys.next()==Some(&"this"));
     ///     assert!(keys.next()==Some(&"hello"));
@@ -198,15 +196,6 @@ impl<K, V, S> LfuCache<K, V, S> {
         return self.reduce_count;
     }
 
-    /// 每次触发访问减少的值，如设置100，那所有元素中的访问次数将减少100
-    /// 用于长时间不访问的数据能在一定时间后过期
-    pub fn set_reduce_step(&mut self, reduce_step: usize) {
-        self.reduce_step = reduce_step;
-    }
-
-    pub fn get_reduce_step(&self) -> usize {
-        return self.reduce_step;
-    }
     /// 获取当前容量
     pub fn capacity(&self) -> usize {
         self.cap
@@ -341,7 +330,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                 unsafe {
                     let node = v.as_ptr();
                     let freq = get_freq_by_times((*node).counter);
-                    (*node).counter = (*node).counter.saturating_sub(self.reduce_step);
+                    (*node).counter /= 2;
                     let next = get_freq_by_times((*node).counter);
                     max = max.max(next);
                     if freq != next {
