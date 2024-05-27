@@ -284,7 +284,7 @@ impl<K: Ord + Clone, V: Clone> NodePtr<K, V> {
 
 /// # Examples
 /// ```rust
-/// use rbtree::RBTree;
+/// use algorithm::RBTree;
 /// // type inference lets us omit an explicit type signature (which
 /// // would be `RBTree<&str, &str>` in this example).
 /// let mut book_reviews = RBTree::new();
@@ -325,7 +325,7 @@ impl<K: Ord + Clone, V: Clone> NodePtr<K, V> {
 ///
 /// // A `RBTree` with fixed list of elements can be initialized from an array:
 ///  ```
-/// use rbtree::RBTree;
+///  use algorithm::RBTree;
 ///  let timber_resources: RBTree<&str, i32> =
 ///  [("Norway", 100),
 ///   ("Denmark", 50),
@@ -466,7 +466,7 @@ impl<K: Ord, V> Extend<(K, V)> for RBTree<K, V> {
 /// provide the rbtree all keys
 /// # Examples
 /// ```
-/// use rbtree::RBTree;
+/// use algorithm::RBTree;
 /// let mut m = RBTree::new();
 /// for i in 1..6 {
 ///     m.insert(i, i);
@@ -507,10 +507,28 @@ impl<'a, K: Ord, V> Iterator for Keys<'a, K, V> {
     }
 }
 
+pub struct Drain<'a, K: Ord + 'a, V: 'a> {
+    base: &'a mut RBTree<K, V>,
+}
+
+impl<'a, K: Ord, V> Iterator for Drain<'a, K, V> {
+    type Item = (K, V);
+
+    #[inline]
+    fn next(&mut self) -> Option<(K, V)> {
+        self.base.pop_first()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.base.len(), Some(self.base.len()))
+    }
+}
+
 /// provide the rbtree all values order by key
 /// # Examples
 /// ```
-/// use rbtree::RBTree;
+/// use algorithm::RBTree;
 /// let mut m = RBTree::new();
 /// m.insert(2, 5);
 /// m.insert(1, 6);
@@ -555,7 +573,7 @@ impl<'a, K: Ord, V> Iterator for Values<'a, K, V> {
 /// provide the rbtree all values and it can be modify
 /// # Examples
 /// ```
-/// use rbtree::RBTree;
+/// use algorithm::RBTree;
 /// let mut m = RBTree::new();
 /// for i in 0..32 {
 ///     m.insert(i, i);
@@ -667,7 +685,7 @@ impl<K: Ord, V> DoubleEndedIterator for IntoIter<K, V> {
 /// provide iter ref for RBTree
 /// # Examples
 /// ```
-/// use rbtree::RBTree;
+/// use algorithm::RBTree;
 /// let mut m = RBTree::new();
 /// for i in 0..32 {
 ///     m.insert(i, i * 2);
@@ -739,7 +757,7 @@ impl<'a, K: Ord + 'a, V: 'a> DoubleEndedIterator for Iter<'a, K, V> {
 /// provide iter mut ref for RBTree
 /// # Examples
 /// ```
-/// use rbtree::RBTree;
+/// use algorithm::RBTree;
 /// let mut m = RBTree::new();
 /// for i in 0..32 {
 ///     m.insert(i, i);
@@ -930,7 +948,7 @@ impl<K: Ord, V> RBTree<K, V> {
     /// replace value if key exist, if not exist insert it.
     /// # Examples
     /// ```
-    /// use rbtree::RBTree;
+    /// use algorithm::RBTree;
     /// let mut m = RBTree::new();
     /// assert_eq!(m.len(), 0);
     /// m.insert(2, 4);
@@ -1198,7 +1216,7 @@ impl<K: Ord, V> RBTree<K, V> {
     /// clear all red back tree elements.
     /// # Examples
     /// ```
-    /// use rbtree::RBTree;
+    /// use algorithm::RBTree;
     /// let mut m = RBTree::new();
     /// for i in 0..6 {
     ///     m.insert(i, i);
@@ -1423,6 +1441,13 @@ impl<K: Ord, V> RBTree<K, V> {
             tail: self.last_child(),
             len: self.len,
             _marker: marker::PhantomData,
+        }
+    }
+
+    #[inline]
+    pub fn drain(&mut self) -> Drain<'_, K, V> {
+        Drain {
+            base: self,
         }
     }
 }
@@ -1817,5 +1842,19 @@ mod tests {
             cache.push(e.0.clone());
         }
         assert_eq!(&cache, &vec![3, 2, 1]);
+    }
+    
+    #[test]
+    fn test_drain() {
+        let mut a = RBTree::new();
+        a.insert(1, 1);
+        a.insert(2, 2);
+        a.insert(3, 3);
+
+        assert_eq!(a.len(), 3);
+        let mut drain = a.drain();
+        assert_eq!(drain.next().unwrap(), (1, 1));
+        assert_eq!(drain.next().unwrap(), (2, 2));
+        assert_eq!(a.len(), 1);
     }
 }

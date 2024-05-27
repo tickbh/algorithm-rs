@@ -379,6 +379,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     let mut lru = LfuCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
+    ///     let _ = lru.get(&"this");
     ///     {
     ///         let mut drain = lru.drain();
     ///         assert!(drain.next()==Some(("hello", "algorithm")));

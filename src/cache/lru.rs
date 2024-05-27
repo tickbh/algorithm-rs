@@ -11,15 +11,10 @@
 // Created Date: 2024/05/24 03:04:11
 
 use std::{
-    borrow::Borrow,
-    collections::{
+    borrow::Borrow, collections::{
         hash_map::RandomState,
         HashMap,
-    },
-    hash::{BuildHasher, Hash},
-    marker::PhantomData,
-    mem,
-    ptr::{self, NonNull},
+    }, fmt::{self, Debug}, hash::{BuildHasher, Hash}, marker::PhantomData, mem, ops::{Index, IndexMut}, ptr::{self, NonNull}
 };
 
 use super::{KeyRef, KeyWrapper};
@@ -56,9 +51,9 @@ impl<K, V> LruEntry<K, V> {
 /// 一个 LRU 缓存普通级的实现, 接口参照Hashmap保持一致
 /// 设置容量之后将最大保持该容量大小的数据
 /// 后进的数据将会淘汰最久没有被访问的数据
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use algorithm::LruCache;
 /// fn main() {
@@ -112,7 +107,7 @@ impl<K, V, S> LruCache<K, V, S> {
 
     /// 清理当前数据
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use algorithm::LruCache;
     /// fn main() {
@@ -140,6 +135,10 @@ impl<K, V, S> LruCache<K, V, S> {
         self.map.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.map.len() == 0
+    }
+
     /// 从队列中节点剥离
     fn detach(&mut self, entry: *mut LruEntry<K, V>) {
         unsafe {
@@ -164,7 +163,7 @@ impl<K, V, S> LruCache<K, V, S> {
     }
 
     /// 遍历当前的所有值
-    /// 
+    ///
     /// ```
     /// use algorithm::LruCache;
     /// fn main() {
@@ -181,9 +180,30 @@ impl<K, V, S> LruCache<K, V, S> {
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter { len: self.map.len(), ptr: self.head, end: self.tail, phantom: PhantomData }
     }
-    
+
+
+    /// 遍历当前的所有值, 可变
+    ///
+    /// ```
+    /// use algorithm::LruCache;
+    /// fn main() {
+    ///     let mut lru = LruCache::new(3);
+    ///     lru.insert("hello", "algorithm".to_string());
+    ///     lru.insert("this", "lru".to_string());
+    ///     for (k, v) in lru.iter_mut() {
+    ///         v.push_str(" ok");
+    ///     }
+    ///     assert!(lru.len() == 2);
+    ///     assert!(lru.get(&"this") == Some(&"lru ok".to_string()));
+    /// assert!(lru.get(&"hello") == Some(&"algorithm ok".to_string()));
+    /// }
+    /// ```
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+        IterMut { len: self.map.len(), ptr: self.head, end: self.tail, phantom: PhantomData }
+    }
+
     /// 遍历当前的key值
-    /// 
+    ///
     /// ```
     /// use algorithm::LruCache;
     /// fn main() {
@@ -201,24 +221,51 @@ impl<K, V, S> LruCache<K, V, S> {
             iter: self.iter()
         }
     }
-    
+
     /// 遍历当前的valus值
-    /// 
+    ///
     /// ```
     /// use algorithm::LruCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
-    ///     lru.insert("hello", "algorithm");
-    ///     lru.insert("this", "lru");
-    ///     let mut values = lru.values();
-    ///     assert!(values.next()==Some(&"lru"));
-    ///     assert!(values.next()==Some(&"algorithm"));
-    ///     assert!(values.next() == None);
+    ///     let vec = vec![(1, 1), (2, 2), (3, 3)];
+    ///     let mut map: LruCache<_, _, _> = vec.into_iter().collect();
+    ///     for value in map.values_mut() {
+    ///     *value = (*value) * 2
+    ///     }
+    ///     let values: Vec<_> = map.values().cloned().collect();
+    ///     assert_eq!(values.len(), 3);
+    ///     assert!(values.contains(&2));
+    ///     assert!(values.contains(&4));
+    ///     assert!(values.contains(&6));
     /// }
     /// ```
     pub fn values(&self) -> Values<'_, K, V> {
         Values {
             iter: self.iter()
+        }
+    }
+
+
+    /// 遍历当前的valus值
+    ///
+    /// ```
+    /// use algorithm::LruCache;
+    /// fn main() {
+    ///     let mut lru = LruCache::new(3);
+    ///     lru.insert("hello", "algorithm".to_string());
+    ///     lru.insert("this", "lru".to_string());
+    ///     {
+    ///         let mut values = lru.values_mut();
+    ///         values.next().unwrap().push_str(" ok");
+    ///         values.next().unwrap().push_str(" ok");
+    ///         assert!(values.next() == None);
+    ///     }
+    ///     assert_eq!(lru.get(&"this"), Some(&"lru ok".to_string()))
+    /// }
+    /// ```
+    pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
+        ValuesMut {
+            iter: self.iter_mut()
         }
     }
 
@@ -228,9 +275,8 @@ impl<K, V, S> LruCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
-
     /// 排出当前数据
-    /// 
+    ///
     /// ```
     /// use algorithm::LruCache;
     /// fn main() {
@@ -303,6 +349,40 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
+    pub fn contains_key<Q>(&mut self, k: &Q) -> bool
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
+        self.map.contains_key(KeyWrapper::from_ref(k))
+    }
+
+
+    /// 获取key值相对应的value值, 根本hash判定
+    ///
+    /// ```
+    /// use algorithm::LruCache;
+    /// fn main() {
+    ///     let mut lru = LruCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     assert!(lru.raw_get(&"this") == Some(&"lru"));
+    /// }
+    /// ```
+    pub fn raw_get<Q>(&self, k: &Q) -> Option<&V>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
+        match self.map.get(KeyWrapper::from_ref(k)) {
+            Some(l) => {
+                let node = l.as_ptr();
+                unsafe { Some(&*(*node).val.as_ptr()) }
+            }
+            None => None,
+        }
+    }
+
     /// 获取key值相对应的value值, 根本hash判定
     ///
     /// ```
@@ -315,9 +395,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// }
     /// ```
     pub fn get<Q>(&mut self, k: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
     {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
@@ -342,9 +422,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// }
     /// ```
     pub fn get_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &V)>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
     {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
@@ -370,9 +450,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// }
     /// ```
     pub fn get_mut<Q>(&mut self, k: &Q) -> Option<&mut V>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
     {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
@@ -440,9 +520,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// }
     /// ```
     pub fn remove<Q>(&mut self, k: &Q) -> Option<(K, V)>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
     {
         match self.map.remove(KeyWrapper::from_ref(k)) {
             Some(l) => unsafe {
@@ -494,28 +574,27 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// }
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&K, &mut V) -> bool,
+        where
+            F: FnMut(&K, &mut V) -> bool,
     {
         unsafe {
             let mut node = (*self.head).next;
             while node != self.tail {
                 if !f(&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr()) {
                     let next = (*node).next;
-                    self.map.remove(&KeyRef { k: &*(*node).key.as_ptr()});
+                    self.map.remove(&KeyRef { k: &*(*node).key.as_ptr() });
                     self.detach(node);
                     node = next;
                 } else {
                     node = (*node).next;
                 }
-            }    
+            }
         }
     }
 }
 
 impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LruCache<K, V, S> {
     fn clone(&self) -> Self {
-        
         let mut new_lru = LruCache::with_hasher(self.cap, self.map.hasher().clone());
 
         for (key, value) in self.iter().rev() {
@@ -556,6 +635,10 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
             Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
 }
 
 impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
@@ -568,6 +651,94 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
             let node = self.end;
             self.len -= 1;
             Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
+        }
+    }
+}
+
+
+/// Convert RBTree to iter, move out the tree.
+pub struct IntoIter<K: Hash + Eq, V, S: BuildHasher> {
+    base: LruCache<K, V, S>,
+}
+
+// Drop all owned pointers if the collection is dropped
+impl<K: Hash + Eq, V, S: BuildHasher> Drop for IntoIter<K, V, S> {
+    #[inline]
+    fn drop(&mut self) {
+        for (_, _) in self {}
+    }
+}
+
+impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<(K, V)> {
+        self.base.pop()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.base.len(), Some(self.base.len()))
+    }
+}
+
+impl<K: Hash + Eq, V, S: BuildHasher> IntoIterator for LruCache<K, V, S> {
+    type Item = (K, V);
+    type IntoIter = IntoIter<K, V, S>;
+
+    #[inline]
+    fn into_iter(self) -> IntoIter<K, V, S> {
+        IntoIter {
+            base: self
+        }
+    }
+}
+
+
+impl<K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for IntoIter<K, V, S> {
+    #[inline]
+    fn next_back(&mut self) -> Option<(K, V)> {
+        self.base.pop_last()
+    }
+}
+
+pub struct IterMut<'a, K: 'a, V: 'a> {
+    len: usize,
+    ptr: *mut LruEntry<K, V>,
+    end: *mut LruEntry<K, V>,
+    phantom: PhantomData<&'a usize>,
+}
+
+impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+    type Item = (&'a K, &'a mut V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+        unsafe {
+            self.ptr = (*self.ptr).next;
+            let node = self.ptr;
+            self.len -= 1;
+            Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr()))
+        }
+    }
+
+    
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+        unsafe {
+            self.end = (*self.end).prev;
+            let node = self.end;
+            self.len -= 1;
+            Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr()))
         }
     }
 }
@@ -598,28 +769,503 @@ pub struct Keys<'a, K, V> {
 }
 
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
-    type Item=&'a K;
+    type Item = &'a K;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(k, _)| k)
     }
-}
 
-impl<'a, K, V> ExactSizeIterator for Keys<'a, K, V> {
+    
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.iter.len, Some(self.iter.len))
+    }
 }
-
 
 pub struct Values<'a, K, V> {
     iter: Iter<'a, K, V>,
 }
 
 impl<'a, K, V> Iterator for Values<'a, K, V> {
-    type Item=&'a V;
+    type Item = &'a V;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(_, v)| v)
     }
+    
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.iter.len, Some(self.iter.len))
+    }
 }
 
-impl<'a, K, V> ExactSizeIterator for Values<'a, K, V> {
+
+pub struct ValuesMut<'a, K, V> {
+    iter: IterMut<'a, K, V>,
+}
+
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
+    type Item = &'a mut V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.iter.len, Some(self.iter.len))
+    }
+}
+
+
+impl<K: Hash + Eq, V> FromIterator<(K, V)> for LruCache<K, V, RandomState> {
+    fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> LruCache<K, V, RandomState> {
+        let mut lru = LruCache::new(2);
+        lru.extend(iter);
+        lru
+    }
+}
+
+impl<K: Hash + Eq, V> Extend<(K, V)> for LruCache<K, V, RandomState> {
+    fn extend<T: IntoIterator<Item=(K, V)>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        for (k, v) in iter {
+            self.reserve(1);
+            self.insert(k, v);
+        }
+    }
+}
+
+impl<K, V, S> PartialEq for LruCache<K, V, S>
+    where
+        K: Eq + Hash,
+        V: PartialEq,
+        S: BuildHasher
+{
+    fn eq(&self, other: &LruCache<K, V, S>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        self.iter()
+            .all(|(key, value)| other.raw_get(key).map_or(false, |v| *value == *v))
+    }
+}
+
+impl<K, V, S> Eq for LruCache<K, V, S>
+    where
+        K: Eq + Hash,
+        V: PartialEq,
+        S: BuildHasher
+{}
+
+impl<K, V, S> Debug for LruCache<K, V, S>
+where
+    K: Ord + Debug,
+    V: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+
+impl<'a, K, V, S> Index<&'a K> for LruCache<K, V, S>
+where
+    K: Hash+Eq,
+    S: BuildHasher
+{
+    type Output = V;
+
+    #[inline]
+    fn index(&self, index: &K) -> &V {
+        self.raw_get(index).expect("no entry found for key")
+    }
+}
+
+
+impl<'a, K, V, S> IndexMut<&'a K> for LruCache<K, V, S>
+where
+    K: Hash+Eq,
+    S: BuildHasher
+{
+    #[inline]
+    fn index_mut(&mut self, index: &K) -> &mut V {
+        self.get_mut(index).expect("no entry found for key")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::RandomState;
+
+    use super::LruCache;
+
+    #[test]
+    fn test_insert() {
+        let mut m = LruCache::new(2);
+        assert_eq!(m.len(), 0);
+        m.insert(1, 2);
+        assert_eq!(m.len(), 1);
+        m.insert(2, 4);
+        assert_eq!(m.len(), 2);
+        m.insert(3, 6);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.get(&1), None);
+        assert_eq!(*m.get(&2).unwrap(), 4);
+        assert_eq!(*m.get(&3).unwrap(), 6);
+    }
+
+    #[test]
+    fn test_replace() {
+        let mut m = LruCache::new(2);
+        assert_eq!(m.len(), 0);
+        m.insert(2, 4);
+        assert_eq!(m.len(), 1);
+        m.insert(2, 6);
+        assert_eq!(m.len(), 1);
+        assert_eq!(*m.get(&2).unwrap(), 6);
+    }
+
+    #[test]
+    fn test_clone() {
+        let mut m = LruCache::new(2);
+        assert_eq!(m.len(), 0);
+        m.insert(1, 2);
+        assert_eq!(m.len(), 1);
+        m.insert(2, 4);
+        assert_eq!(m.len(), 2);
+        let mut m2 = m.clone();
+        m.clear();
+        assert_eq!(*m2.get(&1).unwrap(), 2);
+        assert_eq!(*m2.get(&2).unwrap(), 4);
+        assert_eq!(m2.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_remove() {
+        let mut m: LruCache<isize, bool, RandomState> = LruCache::new(2);
+        assert_eq!(m.remove(&0), None);
+    }
+
+    #[test]
+    fn test_empty_iter() {
+        let mut m: LruCache<isize, bool, RandomState> = LruCache::new(2);
+        assert_eq!(m.iter().next(), None);
+        assert_eq!(m.iter_mut().next(), None);
+        assert_eq!(m.len(), 0);
+        assert!(m.is_empty());
+        assert_eq!(m.into_iter().next(), None);
+    }
+
+    #[test]
+    fn test_lots_of_insertions() {
+        let mut m = LruCache::new(1000);
+
+        // Try this a few times to make sure we never screw up the hashmap's
+        // internal state.
+        for _ in 0..10 {
+            assert!(m.is_empty());
+
+            for i in 1..101 {
+                m.insert(i, i);
+
+                for j in 1..i + 1 {
+                    let r = m.get(&j);
+                    assert_eq!(r, Some(&j));
+                }
+
+                for j in i + 1..101 {
+                    let r = m.get(&j);
+                    assert_eq!(r, None);
+                }
+            }
+
+            for i in 101..201 {
+                assert!(!m.contains_key(&i));
+            }
+
+            // remove forwards
+            for i in 1..101 {
+                assert!(m.remove(&i).is_some());
+
+                for j in 1..i + 1 {
+                    assert!(!m.contains_key(&j));
+                }
+
+                for j in i + 1..101 {
+                    assert!(m.contains_key(&j));
+                }
+            }
+
+            for i in 1..101 {
+                assert!(!m.contains_key(&i));
+            }
+
+            for i in 1..101 {
+                m.insert(i, i);
+            }
+
+            // remove backwards
+            for i in (1..101).rev() {
+                assert!(m.remove(&i).is_some());
+
+                for j in i..101 {
+                    assert!(!m.contains_key(&j));
+                }
+
+                for j in 1..i {
+                    assert!(m.contains_key(&j));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_find_mut() {
+        let mut m = LruCache::new(3);
+        m.insert(1, 12);
+        m.insert(2, 8);
+        m.insert(5, 14);
+        let new = 100;
+        match m.get_mut(&5) {
+            None => panic!(),
+            Some(x) => *x = new,
+        }
+        assert_eq!(m.get(&5), Some(&new));
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut m = LruCache::new(3);
+        m.insert(1, 2);
+        assert_eq!(*m.get(&1).unwrap(), 2);
+        m.insert(5, 3);
+        assert_eq!(*m.get(&5).unwrap(), 3);
+        m.insert(9, 4);
+        assert_eq!(*m.get(&1).unwrap(), 2);
+        assert_eq!(*m.get(&5).unwrap(), 3);
+        assert_eq!(*m.get(&9).unwrap(), 4);
+        assert_eq!(m.remove(&1).unwrap(), (1, 2));
+        assert_eq!(m.remove(&5).unwrap(), (5, 3));
+        assert_eq!(m.remove(&9).unwrap(), (9, 4));
+        assert_eq!(m.len(), 0);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let mut m = LruCache::new(2);
+        m.insert(1, 2);
+        assert!(!m.is_empty());
+        assert!(m.remove(&1).is_some());
+        assert!(m.is_empty());
+    }
+
+    #[test]
+    fn test_pop() {
+        let mut m = LruCache::new(3);
+        m.insert(3, 6);
+        m.insert(2, 4);
+        m.insert(1, 2);
+        assert_eq!(m.len(), 3);
+        assert_eq!(m.pop(), Some((1, 2)));
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.pop_last(), Some((3, 6)));
+        assert_eq!(m.len(), 1);
+    }
+
+    #[test]
+    fn test_iterate() {
+        let mut m = LruCache::new(32);
+        for i in 0..32 {
+            m.insert(i, i * 2);
+        }
+        assert_eq!(m.len(), 32);
+
+        let mut observed: u32 = 0;
+
+        for (k, v) in m.iter() {
+            assert_eq!(*v, *k * 2);
+            observed |= 1 << *k;
+        }
+        assert_eq!(observed, 0xFFFF_FFFF);
+    }
+
+    #[test]
+    fn test_keys() {
+        let vec = vec![(1, 'a'), (2, 'b'), (3, 'c')];
+        let map: LruCache<_, _, _> = vec.into_iter().collect();
+        let keys: Vec<_> = map.keys().cloned().collect();
+        assert_eq!(keys.len(), 3);
+        assert!(keys.contains(&1));
+        assert!(keys.contains(&2));
+        assert!(keys.contains(&3));
+    }
+
+    #[test]
+    fn test_values() {
+        let vec = vec![(1, 'a'), (2, 'b'), (3, 'c')];
+        let map: LruCache<_, _, _> = vec.into_iter().collect();
+        let values: Vec<_> = map.values().cloned().collect();
+        assert_eq!(values.len(), 3);
+        assert!(values.contains(&'a'));
+        assert!(values.contains(&'b'));
+        assert!(values.contains(&'c'));
+    }
+
+    #[test]
+    fn test_values_mut() {
+        let vec = vec![(1, 1), (2, 2), (3, 3)];
+        let mut map: LruCache<_, _, _> = vec.into_iter().collect();
+        for value in map.values_mut() {
+            *value = (*value) * 2
+        }
+        let values: Vec<_> = map.values().cloned().collect();
+        assert_eq!(values.len(), 3);
+        assert!(values.contains(&2));
+        assert!(values.contains(&4));
+        assert!(values.contains(&6));
+    }
+
+    #[test]
+    fn test_find() {
+        let mut m = LruCache::new(2);
+        assert!(m.get(&1).is_none());
+        m.insert(1, 2);
+        match m.get(&1) {
+            None => panic!(),
+            Some(v) => assert_eq!(*v, 2),
+        }
+    }
+
+    #[test]
+    fn test_eq() {
+        let mut m1 = LruCache::new(3);
+        m1.insert(1, 2);
+        m1.insert(2, 3);
+        m1.insert(3, 4);
+
+        let mut m2 = LruCache::new(3);
+        m2.insert(1, 2);
+        m2.insert(2, 3);
+
+        assert!(m1 != m2);
+
+        m2.insert(3, 4);
+
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn test_from_iter() {
+        let xs = [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)];
+
+        let map: LruCache<_, _, _> = xs.iter().cloned().collect();
+
+        for &(k, v) in &xs {
+            assert_eq!(map.raw_get(&k), Some(&v));
+        }
+    }
+
+    #[test]
+    fn test_size_hint() {
+        let xs = [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)];
+
+        let map: LruCache<_, _, _> = xs.iter().cloned().collect();
+
+        let mut iter = map.iter();
+
+        for _ in iter.by_ref().take(3) {}
+
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+    }
+
+    #[test]
+    fn test_iter_len() {
+        let xs = [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)];
+
+        let map: LruCache<_, _, _> = xs.iter().cloned().collect();
+
+        let mut iter = map.iter();
+
+        for _ in iter.by_ref().take(3) {}
+
+        assert_eq!(iter.count(), 3);
+    }
+
+    #[test]
+    fn test_mut_size_hint() {
+        let xs = [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)];
+
+        let mut map: LruCache<_, _, _> = xs.iter().cloned().collect();
+
+        let mut iter = map.iter_mut();
+
+        for _ in iter.by_ref().take(3) {}
+
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+    }
+
+    #[test]
+    fn test_iter_mut_len() {
+        let xs = [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)];
+
+        let mut map: LruCache<_, _, _> = xs.iter().cloned().collect();
+
+        let mut iter = map.iter_mut();
+
+        for _ in iter.by_ref().take(3) {}
+
+        assert_eq!(iter.count(), 3);
+    }
+
+    #[test]
+    fn test_index() {
+        let mut map = LruCache::new(2);
+
+        map.insert(1, 2);
+        map.insert(2, 1);
+        map.insert(3, 4);
+
+        assert_eq!(map[&2], 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_nonexistent() {
+        let mut map = LruCache::new(2);
+
+        map.insert(1, 2);
+        map.insert(2, 1);
+        map.insert(3, 4);
+
+        map[&4];
+    }
+
+    #[test]
+    fn test_extend_iter() {
+        let mut a = LruCache::new(2);
+        a.insert(1, "one");
+        let mut b = LruCache::new(2);
+        b.insert(2, "two");
+        b.insert(3, "three");
+
+        a.extend(b.into_iter());
+
+        assert_eq!(a.len(), 3);
+        assert_eq!(a[&1], "one");
+        assert_eq!(a[&2], "two");
+        assert_eq!(a[&3], "three");
+    }
+
+    #[test]
+    fn test_drain() {
+        let mut a = LruCache::new(3);
+        a.insert(1, 1);
+        a.insert(2, 2);
+        a.insert(3, 3);
+
+        assert_eq!(a.len(), 3);
+        let mut drain = a.drain();
+        assert_eq!(drain.next().unwrap(), (1, 1));
+        assert_eq!(drain.next().unwrap(), (2, 2));
+        assert_eq!(a.len(), 1);
+    }
 }
