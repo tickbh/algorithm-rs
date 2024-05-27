@@ -22,9 +22,9 @@ fn main() {
 相比LRU，LRU-K需要多维护一个队列，用于记录所有缓存数据被访问的历史。只有当数据的访问次数达到K次的时候，才将数据放入缓存。当需要淘汰数据时，LRU-K会淘汰第K次访问时间距当前时间最大的数据。
 
 ```rust
-use algorithm::LruTimeskCache;
+use algorithm::LruKCache;
 fn main() {
-    let mut lru = LruTimeskCache::new(3, 3);
+    let mut lru = LruKCache::with_times(3, 3);
     lru.insert("this", "lru");
     for _ in 0..3 {
         let _ = lru.get("this");

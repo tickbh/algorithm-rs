@@ -3,10 +3,10 @@ use std::hash::Hash;
 
 mod lfu;
 mod lru;
-mod lru_timesk;
+mod lruk;
 
 pub use lru::LruCache;
-pub use lru_timesk::LruTimeskCache;
+pub use lruk::LruKCache;
 pub use lfu::LfuCache;
 
 #[derive(Clone)]

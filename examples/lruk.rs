@@ -1,7 +1,7 @@
 
-use algorithm::LruTimeskCache;
+use algorithm::LruKCache;
 fn main() {
-    let mut lru = LruTimeskCache::new(3, 3);
+    let mut lru = LruKCache::with_times(3, 3);
     lru.insert("this", "lru");
     for _ in 0..3 {
         let _ = lru.get("this");
