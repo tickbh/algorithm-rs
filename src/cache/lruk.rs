@@ -694,6 +694,43 @@ impl<K, V, S> Drop for LruKCache<K, V, S> {
     }
 }
 
+/// Convert LruKCache to iter, move out the tree.
+pub struct IntoIter<K: Hash + Eq, V, S: BuildHasher> {
+    base: LruKCache<K, V, S>,
+}
+
+// Drop all owned pointers if the collection is dropped
+impl<K: Hash + Eq, V, S: BuildHasher> Drop for IntoIter<K, V, S> {
+    #[inline]
+    fn drop(&mut self) {
+        for (_, _) in self {}
+    }
+}
+
+impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<(K, V)> {
+        self.base.pop()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.base.len(), Some(self.base.len()))
+    }
+}
+
+impl<K: Hash + Eq, V, S: BuildHasher> IntoIterator for LruKCache<K, V, S> {
+    type Item = (K, V);
+    type IntoIter = IntoIter<K, V, S>;
+
+    #[inline]
+    fn into_iter(self) -> IntoIter<K, V, S> {
+        IntoIter {
+            base: self
+        }
+    }
+}
+
 pub struct Iter<'a, K: 'a, V: 'a> {
     len: usize,
     times_ptr: *mut LruKEntry<K, V>,
@@ -747,45 +784,6 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
         }
     }
 }
-
-
-/// Convert LruKCache to iter, move out the tree.
-pub struct IntoIter<K: Hash + Eq, V, S: BuildHasher> {
-    base: LruKCache<K, V, S>,
-}
-
-// Drop all owned pointers if the collection is dropped
-impl<K: Hash + Eq, V, S: BuildHasher> Drop for IntoIter<K, V, S> {
-    #[inline]
-    fn drop(&mut self) {
-        for (_, _) in self {}
-    }
-}
-
-impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
-    type Item = (K, V);
-
-    fn next(&mut self) -> Option<(K, V)> {
-        self.base.pop()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.base.len(), Some(self.base.len()))
-    }
-}
-
-impl<K: Hash + Eq, V, S: BuildHasher> IntoIterator for LruKCache<K, V, S> {
-    type Item = (K, V);
-    type IntoIter = IntoIter<K, V, S>;
-
-    #[inline]
-    fn into_iter(self) -> IntoIter<K, V, S> {
-        IntoIter {
-            base: self
-        }
-    }
-}
-
 
 impl<K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for IntoIter<K, V, S> {
     #[inline]

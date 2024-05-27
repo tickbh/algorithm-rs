@@ -614,6 +614,44 @@ impl<K, V, S> Drop for LruCache<K, V, S> {
     }
 }
 
+
+/// Convert LruCache to iter, move out the tree.
+pub struct IntoIter<K: Hash + Eq, V, S: BuildHasher> {
+    base: LruCache<K, V, S>,
+}
+
+// Drop all owned pointers if the collection is dropped
+impl<K: Hash + Eq, V, S: BuildHasher> Drop for IntoIter<K, V, S> {
+    #[inline]
+    fn drop(&mut self) {
+        for (_, _) in self {}
+    }
+}
+
+impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<(K, V)> {
+        self.base.pop()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.base.len(), Some(self.base.len()))
+    }
+}
+
+impl<K: Hash + Eq, V, S: BuildHasher> IntoIterator for LruCache<K, V, S> {
+    type Item = (K, V);
+    type IntoIter = IntoIter<K, V, S>;
+
+    #[inline]
+    fn into_iter(self) -> IntoIter<K, V, S> {
+        IntoIter {
+            base: self
+        }
+    }
+}
+
 pub struct Iter<'a, K: 'a, V: 'a> {
     len: usize,
     ptr: *mut LruEntry<K, V>,
@@ -651,44 +689,6 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
             let node = self.end;
             self.len -= 1;
             Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
-        }
-    }
-}
-
-
-/// Convert LruCache to iter, move out the tree.
-pub struct IntoIter<K: Hash + Eq, V, S: BuildHasher> {
-    base: LruCache<K, V, S>,
-}
-
-// Drop all owned pointers if the collection is dropped
-impl<K: Hash + Eq, V, S: BuildHasher> Drop for IntoIter<K, V, S> {
-    #[inline]
-    fn drop(&mut self) {
-        for (_, _) in self {}
-    }
-}
-
-impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
-    type Item = (K, V);
-
-    fn next(&mut self) -> Option<(K, V)> {
-        self.base.pop()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.base.len(), Some(self.base.len()))
-    }
-}
-
-impl<K: Hash + Eq, V, S: BuildHasher> IntoIterator for LruCache<K, V, S> {
-    type Item = (K, V);
-    type IntoIter = IntoIter<K, V, S>;
-
-    #[inline]
-    fn into_iter(self) -> IntoIter<K, V, S> {
-        IntoIter {
-            base: self
         }
     }
 }
