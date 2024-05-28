@@ -432,7 +432,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///         let mut drain = lru.drain();
     ///         assert!(drain.next()==Some(("hello", "algorithm")));
     ///     }
-    ///     assert!(lru.len() == 1);
+    ///     assert!(lru.len() == 0);
     /// }
     /// ```
     pub fn drain(&mut self) -> Drain<'_, K, V, S> {
@@ -1060,6 +1060,13 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Drain<'a, K, V, S> {
     }
 }
 
+
+impl<'a, K: Hash + Eq, V, S: BuildHasher> Drop for Drain<'a, K, V, S> {
+    fn drop(&mut self) {
+        self.base.clear();
+    }
+}
+
 pub struct Keys<'a, K, V, S> {
     iter: Iter<'a, K, V, S>,
 }
@@ -1561,9 +1568,11 @@ mod tests {
         let _ = a.get(&3);
 
         assert_eq!(a.len(), 3);
-        let mut drain = a.drain();
-        assert_eq!(drain.next().unwrap(), (1, 1));
-        assert_eq!(drain.next().unwrap(), (2, 2));
-        assert_eq!(a.len(), 1);
+        {
+            let mut drain = a.drain();
+            assert_eq!(drain.next().unwrap(), (1, 1));
+            assert_eq!(drain.next().unwrap(), (2, 2));
+        }
+        assert_eq!(a.len(), 0);
     }
 }
