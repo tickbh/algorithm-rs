@@ -619,3 +619,23 @@ impl<T: Default> IntoIterator for Slab<T> {
         }
     }
 }
+
+
+impl<T: Default> FromIterator<T> for Slab<T> {
+    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Slab<T> {
+        let mut lru = Slab::new();
+        lru.extend(iter);
+        lru
+    }
+}
+
+impl<T: Default> Extend<T> for Slab<T> {
+    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+        let iter = iter.into_iter();
+        for v in iter {
+            self.insert(v);
+        }
+    }
+}
+
+
