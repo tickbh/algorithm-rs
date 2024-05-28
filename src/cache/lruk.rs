@@ -429,7 +429,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         self.map.contains_key(KeyWrapper::from_ref(k))
     }
 
-    /// 获取key值相对应的value值, 根本hash判定
+    /// 获取key值相对应的value值, 根据hash判定
     ///
     /// ```
     /// use algorithm::LruKCache;
@@ -454,7 +454,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         }
     }
     
-    /// 获取key值相对应的value值, 根本hash判定
+    /// 获取key值相对应的value值, 根据hash判定
     ///
     /// ```
     /// use algorithm::LruKCache;
@@ -481,7 +481,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         }
     }
 
-    /// 获取key值相对应的key和value值, 根本hash判定
+    /// 获取key值相对应的key和value值, 根据hash判定
     ///
     /// ```
     /// use algorithm::LruKCache;
@@ -508,7 +508,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         }
     }
 
-    /// 获取key值相对应的value值, 根本hash判定, 可编辑被改变
+    /// 获取key值相对应的value值, 根据hash判定, 可编辑被改变
     ///
     /// ```
     /// use algorithm::LruKCache;
@@ -920,7 +920,6 @@ impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
         (self.iter.len, Some(self.iter.len))
     }
 }
-
 
 impl<K: Hash + Eq, V> FromIterator<(K, V)> for LruKCache<K, V, RandomState> {
     fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> LruKCache<K, V, RandomState> {

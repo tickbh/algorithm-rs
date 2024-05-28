@@ -358,7 +358,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     }
 
 
-    /// 获取key值相对应的value值, 根本hash判定
+    /// 获取key值相对应的value值, 根据hash判定
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -383,7 +383,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    /// 获取key值相对应的value值, 根本hash判定
+    /// 获取key值相对应的value值, 根据hash判定
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -410,7 +410,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    /// 获取key值相对应的key和value值, 根本hash判定
+    /// 获取key值相对应的key和value值, 根据hash判定
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -437,7 +437,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    /// 获取key值相对应的value值, 根本hash判定, 可编辑被改变
+    /// 获取key值相对应的value值, 根据hash判定, 可编辑被改变
     ///
     /// ```
     /// use algorithm::LruCache;
