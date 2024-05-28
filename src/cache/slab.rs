@@ -360,6 +360,21 @@ impl<T: Default> Slab<T> {
         }
     }
 
+
+    /// 根据保留当前的元素, 返回false则表示抛弃元素
+    ///
+    /// ```
+    /// use algorithm::Slab;
+    /// fn main() {
+    ///     let mut slab = Slab::new();
+    ///     slab.insert("hello");
+    ///     slab.insert("this");
+    ///     slab.insert("year");
+    ///     slab.retain(|_, v| *v == "hello" || *v == "this");
+    ///     assert!(slab.len() == 2);
+    ///     assert!(slab.get(1) == &"this");
+    /// }
+    /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(usize, &mut T) -> bool,
@@ -378,12 +393,37 @@ impl<T: Default> Slab<T> {
 }
 
 impl<T: Default + Reinit> Slab<T> {
+    /// 获取下一个key并重新初始化
+    ///
+    /// ```
+    /// use algorithm::Slab;
+    /// fn main() {
+    ///     let mut slab = Slab::new();
+    ///     let k = slab.insert("hello");
+    ///     let k1 = slab.insert("slab");
+    ///     slab.remove(k1);
+    ///     assert!(slab.get_reinit_next() == k1);
+    ///     assert!(slab.get(k1) == &"");
+    /// }
+    /// ```
     pub fn get_reinit_next(&mut self) -> usize {
         let key = self.get_next();
         self.entries[key].t.reinit();
         key
     }
 
+    /// 获取下一个key和val并重新初始化
+    ///
+    /// ```
+    /// use algorithm::Slab;
+    /// fn main() {
+    ///     let mut slab = Slab::new();
+    ///     let k = slab.insert("hello");
+    ///     let k1 = slab.insert("slab");
+    ///     slab.remove(k1);
+    ///     assert!(slab.get_reinit_next_val() == (k1, &mut ""));
+    /// }
+    /// ```
     pub fn get_reinit_next_val(&mut self) -> (usize, &mut T) {
         let key = self.get_next();
         self.entries[key].t.reinit();
