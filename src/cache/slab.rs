@@ -74,6 +74,13 @@ struct Entry<T: Default> {
     next: usize,
 }
 
+impl<T: Default + Clone> Clone for Entry<T> {
+    fn clone(&self) -> Self {
+        Self { t: self.t.clone(), next: self.next.clone() }
+    }
+}
+
+
 impl<T: Default> Entry<T> {
     pub fn new() -> Self {
         Self {
@@ -95,7 +102,6 @@ impl<T: Default> Entry<T> {
 /// # Examples
 /// 
 /// ```
-/// use algorithm::slabKCache;
 /// use algorithm::Slab;
 /// fn main() {
 ///     let mut slab = Slab::new();
@@ -137,6 +143,18 @@ impl<T: Default> Slab<T> {
         self.len
     }
 
+    /// 是否为空表
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// 清除数据
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.len = 0;
+        self.next = 0;
+    }
+
     /// 获取index值相对应的value值
     ///
     /// ```
@@ -149,9 +167,22 @@ impl<T: Default> Slab<T> {
     /// ```
     pub fn get(&mut self, key: usize) -> &T {
         let entry = &mut self.entries[key];
-        assert!(entry.is_occupied() == true);
+        debug_assert!(entry.is_occupied() == true);
         &entry.t
     }
+
+    /// 尝试获取key下的值
+    pub fn try_get(&mut self, key: usize) -> Option<&T> {
+        if key >= self.entries.len() {
+            return None;
+        }
+        let entry = &mut self.entries[key];
+        if !entry.is_occupied() {
+            return None;
+        }
+        Some(&entry.t)
+    }
+
 
     /// 获取下一个的key值和val值
     ///
@@ -265,6 +296,9 @@ impl<T: Default> Slab<T> {
     /// }
     /// ```
     pub fn try_remove(&mut self, key: usize) -> bool {
+        if key >= self.entries.len() {
+            return false;
+        }
         let entry = &mut self.entries[key];
         if !entry.is_occupied() {
             return false;
@@ -428,6 +462,12 @@ impl<T: Default + Reinit> Slab<T> {
         let key = self.get_next();
         self.entries[key].t.reinit();
         (key, &mut self.entries[key].t)
+    }
+}
+
+impl<T: Default+Clone> Clone for Slab<T> {
+    fn clone(&self) -> Self {
+        Self { entries: self.entries.clone(), len: self.len.clone(), next: self.next.clone() }
     }
 }
 
@@ -639,3 +679,163 @@ impl<T: Default> Extend<T> for Slab<T> {
 }
 
 
+
+#[cfg(test)]
+mod tests {
+    use super::Slab;
+
+    #[test]
+    fn test_insert() {
+        let mut m = Slab::new();
+        assert_eq!(m.len(), 0);
+        m.insert(1);
+        assert_eq!(m.len(), 1);
+        m.insert(2);
+        assert_eq!(m.len(), 2);
+        m.insert(3);
+        assert_eq!(m.len(), 3);
+        assert_eq!(m.get(0), &1);
+    }
+
+    #[test]
+    fn test_clone() {
+        let mut m = Slab::new();
+        assert_eq!(m.len(), 0);
+        m.insert(1);
+        assert_eq!(m.len(), 1);
+        m.insert(2);
+        assert_eq!(m.len(), 2);
+        let mut m2 = m.clone();
+        m.clear();
+        assert_eq!(*m2.get(0), 1);
+        assert_eq!(*m2.get(1), 2);
+        assert_eq!(m2.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_remove() {
+        let mut m: Slab<isize> = Slab::new();
+        assert_eq!(m.try_remove(0), false);
+    }
+
+    #[test]
+    fn test_empty_iter() {
+        let mut m: Slab<isize> = Slab::new();
+        assert_eq!(m.iter().next(), None);
+        assert_eq!(m.iter_mut().next(), None);
+        assert_eq!(m.len(), 0);
+        assert!(m.is_empty());
+        assert_eq!(m.into_iter().next(), None);
+    }
+
+
+    #[test]
+    fn test_remove() {
+        let mut m = Slab::new();
+        m.insert(1);
+        assert_eq!(*m.get(0), 1);
+        m.insert(5);
+        assert_eq!(*m.get(1), 5);
+        m.insert(9);
+        assert_eq!(*m.get(2), 9);
+        m.remove(0);
+        assert_eq!(m.len(), 2);
+        m.remove(1);
+        assert_eq!(m.len(), 1);
+        m.remove(2);
+        assert_eq!(m.len(), 0);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let mut m = Slab::new();
+        m.insert(1);
+        assert!(!m.is_empty());
+        assert!(m.try_remove(0));
+        assert!(m.is_empty());
+    }
+
+
+    #[test]
+    fn test_iterate() {
+        let mut m = Slab::new();
+        for i in 0..32 {
+            m.insert(i * 2);
+        }
+        assert_eq!(m.len(), 32);
+
+        let mut observed: u32 = 0;
+
+        for (k, v) in m.iter() {
+            assert_eq!(*v, k * 2);
+            observed |= 1 << k;
+        }
+        assert_eq!(observed, 0xFFFF_FFFF);
+    }
+
+    #[test]
+    fn test_find() {
+        let mut m = Slab::new();
+        assert!(m.try_get(1).is_none());
+        m.insert(1);
+        match m.try_get(0) {
+            None => panic!(),
+            Some(v) => assert_eq!(*v, 1),
+        }
+    }
+
+    #[test]
+    fn test_index() {
+        let mut map = Slab::new();
+
+        map.insert(1);
+        map.insert(2);
+        map.insert(3);
+
+        assert_eq!(map[&2], 3);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_nonexistent() {
+        let mut map = Slab::new();
+
+        map.insert(1);
+        map.insert(2);
+        map.insert(3);
+
+        map[&4];
+    }
+
+    #[test]
+    fn test_extend_iter() {
+        let mut a = Slab::new();
+        a.insert("one");
+        let mut b = Slab::new();
+        b.insert("two");
+        b.insert("three");
+
+        a.extend(b.into_iter().map(|(_, v)| v));
+
+        assert_eq!(a.len(), 3);
+        assert_eq!(a[&0], "one");
+        assert_eq!(a[&1], "two");
+        assert_eq!(a[&2], "three");
+    }
+
+    #[test]
+    fn test_drain() {
+        let mut a = Slab::new();
+        a.insert(1);
+        a.insert(2);
+        a.insert(3);
+
+        assert_eq!(a.len(), 3);
+        {
+            let mut drain = a.drain();
+            assert_eq!(drain.next().unwrap(), 1);
+            assert_eq!(drain.next().unwrap(), 2);
+        }
+        assert_eq!(a.len(), 0);
+    }
+}
