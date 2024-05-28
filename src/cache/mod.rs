@@ -4,10 +4,12 @@ use std::hash::Hash;
 mod lfu;
 mod lru;
 mod lruk;
+mod slab;
 
 pub use lru::LruCache;
 pub use lruk::LruKCache;
 pub use lfu::LfuCache;
+pub use slab::Slab;
 
 #[derive(Clone)]
 struct KeyRef<K> {

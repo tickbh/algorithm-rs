@@ -2,6 +2,9 @@
 
 use algorithm::LruKCache;
 fn main() {
+    let mut xx = "aaa";
+    xx = "bb";
+    println!("xx = {:?}", xx);
     let mut lru = LruKCache::with_times(3, 3);
     lru.insert("this", "lru");
     for _ in 0..3 {
