@@ -9,7 +9,7 @@ mod slab;
 pub use lru::LruCache;
 pub use lruk::LruKCache;
 pub use lfu::LfuCache;
-pub use slab::Slab;
+pub use slab::{Slab, Reinit};
 
 #[derive(Clone)]
 struct KeyRef<K> {

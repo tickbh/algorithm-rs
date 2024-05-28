@@ -17,6 +17,7 @@ use std::{
 };
 
 pub trait Reinit {
+    #[inline(always)]
     fn reinit(&mut self) {}
 }
 
@@ -184,6 +185,23 @@ impl<T: Default> Slab<T> {
     }
 
 
+    /// 获取index值相对应的value可变值
+    ///
+    /// ```
+    /// use algorithm::Slab;
+    /// fn main() {
+    ///     let mut slab = Slab::new();
+    ///     let k = slab.insert("slab");
+    ///     assert!(slab.get_mut(k) == &mut "slab");
+    /// }
+    /// ```
+    pub fn get_mut(&mut self, key: usize) -> &mut T {
+        let entry = &mut self.entries[key];
+        debug_assert!(entry.is_occupied() == true);
+        &mut entry.t
+    }
+
+
     /// 获取下一个的key值和val值
     ///
     /// ```
@@ -273,6 +291,7 @@ impl<T: Default> Slab<T> {
     ///     assert!(slab[&k1] == "slab");
     /// }
     /// ```
+    #[inline(always)]
     pub fn remove(&mut self, key: usize) {
         if !self.try_remove(key) {
             panic!("index error")
@@ -458,6 +477,7 @@ impl<T: Default + Reinit> Slab<T> {
     ///     assert!(slab.get_reinit_next_val() == (k1, &mut ""));
     /// }
     /// ```
+    #[inline(always)]
     pub fn get_reinit_next_val(&mut self) -> (usize, &mut T) {
         let key = self.get_next();
         self.entries[key].t.reinit();
