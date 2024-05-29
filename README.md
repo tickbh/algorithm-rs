@@ -65,7 +65,9 @@ fn main() {
 
 # slab 缓存块组，linux中缓存对象的分配器
 缓存对象需实现Default，将会使对象缓存起来，避免频繁的重复申请释放带来的开销
+
 以下我们以简单的测试来进行对比，algorithm::Slab与slab::Slab与普通的alloc
+
 以下测试场景相对简单，可能对`slab::Slab`较为不公平
 
 ```rust
@@ -138,7 +140,9 @@ fn main() {
 }
 ```
 最终用release命令进行输出测试，结果均为一致
+
 但是耗时algorithm避免了申请创建的开销，耗时相对较短，做的仅仅将对象重新reinit
+
 在此场景中tokio::slab即进行了申请又开销了插入及删除，反而耗时最长
 ```console
 algorithm: all cost times 132ms, sum = 18446744063712505088
