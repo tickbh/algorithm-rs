@@ -62,3 +62,86 @@ fn main() {
     assert!(keys.next() == None);
 }
 ```
+
+# slab 缓存块组，linux中缓存对象的分配器
+缓存对象需实现Default，将会使对象缓存起来，避免频繁的重复申请释放带来的开销
+以下我们以简单的测试来进行对比，algorithm::Slab与slab::Slab与普通的alloc
+以下测试场景相对简单，可能对`slab::Slab`较为不公平
+
+```rust
+use std::{ptr, time::Instant};
+
+use algorithm::{Reinit, Slab};
+
+const ARRAY_SIZE: usize = 10240;
+const NUM: usize = usize::MAX - 99999;
+const ZERO_ARRAY: [usize; ARRAY_SIZE] = [NUM; ARRAY_SIZE];
+struct TestStruct {
+    array: [usize; ARRAY_SIZE],
+    size: usize,
+    val: String,
+}
+
+impl Default for TestStruct {
+    fn default() -> Self {
+        Self { array: [NUM; ARRAY_SIZE], size: 0, val:  "slab".to_string(), }
+    }
+}
+
+impl Reinit for TestStruct {
+    #[inline(always)]
+    fn reinit(&mut self) {
+        self.size = 0;
+        self.val.clear();
+        self.val.push_str("slab");
+        unsafe {
+            ptr::copy_nonoverlapping(&ZERO_ARRAY[0], &mut self.array[0], ARRAY_SIZE);
+        }
+    }
+}
+
+fn main() {
+    let times = 100000;
+    let now = Instant::now();
+    let mut slab = Slab::<TestStruct>::new();
+    let mut sum: usize = 0;
+    for i in 0..times {
+        let (next, test) = slab.get_reinit_next_val();
+        test.array[i % 20] = test.array[i % 20].wrapping_add(i % 1024);
+        sum = sum.wrapping_add(test.array[10] + test.size + test.val.len());
+        slab.remove(next);
+    }
+    println!("algorithm: all cost times {}ms, sum = {}", now.elapsed().as_millis(), sum);
+
+
+    let now = Instant::now();
+    let mut slab = slab::Slab::<TestStruct>::new();
+    let mut sum: usize = 0;
+    for i in 0..times {
+        let next = slab.insert(TestStruct::default());
+        let test = &mut slab[next];
+        test.array[i % 20] = test.array[i % 20].wrapping_add(i % 1024);
+        sum = sum.wrapping_add(test.array[10] + test.size + test.val.len());
+        slab.remove(next);
+    }
+    println!("tokio::slab: all cost times {}ms, sum = {}", now.elapsed().as_millis(), sum);
+
+    let now = Instant::now();
+    let mut sum: usize = 0;
+    for i in 0..times {
+        let mut test = TestStruct::default();
+        test.array[i % 20] = test.array[i % 20].wrapping_add(i % 1024);
+        sum = sum.wrapping_add(test.array[10] + test.size + test.val.len());
+        drop(test);
+    }
+    println!("normal alloc: all cost times {}ms, sum = {}", now.elapsed().as_millis(), sum);
+}
+```
+最终用release命令进行输出测试，结果均为一致
+但是耗时algorithm避免了申请创建的开销，耗时相对较短，做的仅仅将对象重新reinit
+在此场景中tokio::slab即进行了申请又开销了插入及删除，反而耗时最长
+```console
+algorithm: all cost times 132ms, sum = 18446744063712505088
+tokio::slab: all cost times 477ms, sum = 18446744063712505088
+normal alloc: all cost times 337ms, sum = 18446744063712505088
+```

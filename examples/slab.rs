@@ -1,9 +1,9 @@
 
-use std::{mem, ptr, time::Instant};
+use std::{ptr, time::Instant};
 
 use algorithm::{Reinit, Slab};
 
-const ARRAY_SIZE: usize = 102400;
+const ARRAY_SIZE: usize = 10240;
 const NUM: usize = usize::MAX - 99999;
 const ZERO_ARRAY: [usize; ARRAY_SIZE] = [NUM; ARRAY_SIZE];
 struct TestStruct {
@@ -30,9 +30,8 @@ impl Reinit for TestStruct {
     }
 }
 
-fn test_speed() {
-
-    let times = 10000;
+fn main() {
+    let times = 100000;
     let now = Instant::now();
     let mut slab = Slab::<TestStruct>::new();
     let mut sum: usize = 0;
@@ -42,8 +41,7 @@ fn test_speed() {
         sum = sum.wrapping_add(test.array[10] + test.size + test.val.len());
         slab.remove(next);
     }
-    println!("all cost times {}, sum = {}", now.elapsed().as_nanos(), sum);
-
+    println!("algorithm: all cost times {}ms, sum = {}", now.elapsed().as_millis(), sum);
 
     let now = Instant::now();
     let mut slab = slab::Slab::<TestStruct>::new();
@@ -55,7 +53,7 @@ fn test_speed() {
         sum = sum.wrapping_add(test.array[10] + test.size + test.val.len());
         slab.remove(next);
     }
-    println!("all cost times {}, sum = {}", now.elapsed().as_nanos(), sum);
+    println!("tokio::slab: all cost times {}ms, sum = {}", now.elapsed().as_millis(), sum);
 
     let now = Instant::now();
     let mut sum: usize = 0;
@@ -65,29 +63,5 @@ fn test_speed() {
         sum = sum.wrapping_add(test.array[10] + test.size + test.val.len());
         drop(test);
     }
-    println!("all cost times {}, sum = {}", now.elapsed().as_nanos(), sum);
-}
-
-
-fn main() {
-    let mut slab = Slab::new();
-    for _ in 0..100 {
-        let k = slab.get_next();
-        slab[&k] = format!("{}", k);
-    }
-    assert!(slab.len() == 100);
-
-    for i in 0..100 {
-        let _ = slab.remove(i);
-    }
-
-    assert!(slab.len() == 0);
-    let k = slab.get_next();
-    assert!(k == 99);
-    assert!(slab[&k] == "99");
-    let k = slab.get_reinit_next();
-    assert!(k == 98);
-    assert!(slab[&k] == "");
-
-    test_speed();
+    println!("normal alloc: all cost times {}ms, sum = {}", now.elapsed().as_millis(), sum);
 }

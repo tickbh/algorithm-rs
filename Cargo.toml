@@ -1,12 +1,12 @@
 [package]
 name = "algorithm"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
-description = " http https proxy by rust"
+description = "about algorithm data structure, now has lru/lru-k/lfu/slab/rbtree, 关于算法常用的数据结构"
 repository = "https://github.com/tickbh/algorithm"
 license = "Apache-2.0"
-keywords = ["algorithm", "lru", "lfu", "lru-k"]
+keywords = ["algorithm", "lru", "lfu", "lru-k", "slab"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,7 +17,6 @@ lazy_static="1.4.0"
 rand="0.8.5"
 libc="0.2"
 slab = "0.4.9"
-
 
 [profile.release]
 opt-level = 3
