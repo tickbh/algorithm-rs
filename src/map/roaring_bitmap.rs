@@ -39,17 +39,6 @@ impl TailContainer {
                 } else {
                     false
                 }
-                // let mut first_big = vec.len();
-                // for (i, v) in vec.iter().rev().enumerate() {
-                //     if v == &val {
-                //         return false;
-                //     }
-                //     if v > &val {
-                //         first_big = i;
-                //     }
-                // }
-                // vec.insert(first_big, val);
-                // true
             },
             TailContainer::Hash(hash) => hash.insert(val)
         }
@@ -66,6 +55,55 @@ impl TailContainer {
                 }
             },
             TailContainer::Hash(hash) => hash.remove(&val)
+        }
+    }
+
+    pub fn next(&self, val: u16) -> Option<u16> {
+        match self {
+            TailContainer::Array(vec) => {
+                match vec.binary_search(&val) {
+                    Ok(s) => { return Some(vec[s]) },
+                    Err(s) => {
+                        if s == vec.len() {
+                            return None;
+                        }
+                        return Some(vec[s]);
+                    }
+                }
+            },
+            TailContainer::Hash(hash) => {
+                for i in val..=65535u16 {
+                    if hash.contains(&i) {
+                        return Some(i);
+                    }
+                }
+                return None;
+            }
+        }
+    }
+
+
+    pub fn next_back(&self, val: u16) -> Option<u16> {
+        match self {
+            TailContainer::Array(vec) => {
+                match vec.binary_search(&val) {
+                    Ok(s) => { return Some(vec[s]) },
+                    Err(s) => {
+                        if s == 0 {
+                            return None;
+                        }
+                        return Some(vec[s - 1]);
+                    }
+                }
+            },
+            TailContainer::Hash(hash) => {
+                for i in (0..=val).rev() {
+                    if hash.contains(&i) {
+                        return Some(i);
+                    }
+                }
+                return None;
+            }
         }
     }
 
@@ -300,7 +338,8 @@ impl RoaringBitMap {
         Iter {
             base: self,
             len: self.len,
-            val: self.min_key,
+            min_val: self.min_key,
+            max_val: self.max_key,
         }
     }
 
@@ -453,7 +492,8 @@ impl Extend<usize> for RoaringBitMap {
 pub struct Iter<'a> {
     base: &'a RoaringBitMap,
     len: usize,
-    val: usize,
+    min_val: usize,
+    max_val: usize,
 }
 
 impl<'a> Iterator for Iter<'a> {
@@ -464,11 +504,21 @@ impl<'a> Iterator for Iter<'a> {
             return None;
         }
 
-        for i in self.val..=self.base.max_key {
-            if self.base.contains(&i) {
+        while self.min_val <= self.base.max_key {
+            let head = self.min_val >> 16;
+            if !self.base.map.contains_key(&head) {
+                self.min_val = (head + 1) * TAIL_NUM;
+                continue;
+            }
+            let tail = (self.min_val % TAIL_NUM) as u16;
+            let container = self.base.map.get(&head).expect("ok");
+            if let Some(i) = container.next(tail) {
+                self.min_val = head * TAIL_NUM + i as usize + 1;
                 self.len -= 1;
-                self.val = i + 1;
-                return Some(i);
+                return Some(head * TAIL_NUM + i as usize);
+            } else {
+                self.min_val = (head + 1) * TAIL_NUM;
+                continue;
             }
         }
         unreachable!()
@@ -484,14 +534,24 @@ impl<'a> DoubleEndedIterator for Iter<'a> {
         if self.len == 0 {
             return None;
         }
-        for i in (0..=(self.base.max_key - self.val)).rev() {
-            if self.base.contains(&i) {
+
+        loop {
+            let head = self.max_val >> 16;
+            if !self.base.map.contains_key(&head) {
+                self.max_val = (head * TAIL_NUM).saturating_sub(1);
+                continue;
+            }
+            let tail = (self.max_val % TAIL_NUM) as u16;
+            let container = self.base.map.get(&head).expect("ok");
+            if let Some(i) = container.next_back(tail) {
+                self.max_val = (head * TAIL_NUM + i as usize).saturating_sub(1);
                 self.len -= 1;
-                self.val = self.base.max_key - i;
-                return Some(i);
+                return Some(head * TAIL_NUM + i as usize);
+            } else {
+                self.max_val = (head * TAIL_NUM).saturating_sub(1);
+                continue;
             }
         }
-        unreachable!()
     }
 }
 
@@ -530,7 +590,15 @@ mod tests {
     #[test]
     fn test_display() {
         let mut m = RoaringBitMap::new();
-        m.add_many(&vec![1, 3, 9, 102400]);
-        assert_eq!(format!("{}", m), "len:4-val:{1,3,9,102400}".to_string());
+        m.add_many(&vec![1, 3, 9, 10240000111]);
+        assert_eq!(format!("{}", m), "len:4-val:{1,3,9,10240000111}".to_string());
+    }
+
+    #[test]
+    fn test_nextback() {
+        let mut m = RoaringBitMap::new();
+        m.add_many(&vec![1, 3, 9, 10240000111]);
+        let vec = m.iter().rev().collect::<Vec<_>>();
+        assert_eq!(vec, vec![10240000111, 9, 3, 1]);
     }
 }
