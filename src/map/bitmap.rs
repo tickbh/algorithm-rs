@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::{fmt::{Debug, Display}, ops::{BitAnd, BitOr, BitXor}};
 
 /// 位图类，根据访问的位看是否被占用
 /// 解决经典的是否被占用的问题，但是相对占用大小会较大
@@ -67,15 +67,18 @@ impl BitMap {
     ///     assert!(map.len() == 1);
     /// }
     /// ```
-    pub fn add(&mut self, val: usize) {
+    pub fn add(&mut self, val: usize) -> bool {
         let pos = val / 8;
         let mask = 1 << val % 8;
+        let mut success = false;
         if self.entries[pos] & mask == 0 {
             self.len += 1;
             self.max_key = self.max_key.max(val);
             self.min_key = self.min_key.min(val);
+            success = true;
         }
         self.entries[pos] = self.entries[pos] | mask;
+        success
     }
 
     /// 添加许多新的元素
@@ -114,14 +117,14 @@ impl BitMap {
     /// ```
     pub fn add_range(&mut self, start: usize, end: usize) {
         for pos in start..end.min((start / 8 + 1) * 8) {
-            self.add(pos)
+            self.add(pos);
         }
         for pos in (start / 8 + 1)..end / 8 {
             self.len += 8 - self.entries[pos].count_ones() as usize;
             self.entries[pos] = u8::MAX;
         }
         for pos in start.max((end / 8) * 8)..=end {
-            self.add(pos)
+            self.add(pos);
         }
 
         self.min_key = self.min_key.min(start);
@@ -314,7 +317,7 @@ impl BitMap {
         map
     }
 
-    /// 取两个位图间的交集
+    /// 取两个位图间的并集
     /// # Examples
     ///
     /// ```
@@ -338,6 +341,55 @@ impl BitMap {
             }
         }
         map
+    }
+
+    
+    /// 取两个位图间的异或并集
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::BitMap;
+    /// fn main() {
+    ///     let mut map = BitMap::new(10240);
+    ///     map.add_range(9, 16);
+    ///     let mut sub_map = BitMap::new(10240);
+    ///     sub_map.add_range(7, 12);
+    ///     let map = map.union_xor(&sub_map);
+    ///     assert_eq!(map.iter().collect::<Vec<_>>(), vec![7, 8, 13, 14, 15, 16]);
+    /// }
+    /// ```
+    pub fn union_xor(&self, other: &BitMap) -> BitMap {
+        let mut map = BitMap::new(other.cap.max(self.cap));
+        let min = self.min_key.min(other.min_key);
+        let max = self.max_key.max(other.max_key);
+        for i in min..=max {
+            if self.contains(&i) ^ other.contains(&i) {
+                map.add(i);
+            }
+        }
+        map
+    }
+}
+
+impl BitAnd for &BitMap {
+    type Output=BitMap;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersect(rhs)
+    }
+}
+
+impl BitOr for &BitMap {
+    type Output=BitMap;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+impl BitXor for &BitMap {
+    type Output=BitMap;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self.union_xor(rhs)
     }
 }
 

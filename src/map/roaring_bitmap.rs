@@ -1,13 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::ops::{BitAnd, BitOr, BitXor};
+
+use crate::BitMap;
 
 
+const TAIL_BIT: usize = 16;
 const TAIL_NUM: usize = 0x10000;
 
 #[derive(Clone)]
 enum TailContainer {
     Array(Vec<u16>),
-    Hash(HashSet<u16>),
+    Bitmap(BitMap),
 }
 
 impl TailContainer {
@@ -25,8 +29,11 @@ impl TailContainer {
             }
 
         };
-        let hash = HashSet::from_iter(val.into_iter());
-        *self = TailContainer::Hash(hash);
+        let mut map = BitMap::new(TAIL_NUM);
+        for v in val {
+            map.add(v as usize);
+        }
+        *self = TailContainer::Bitmap(map);
     }
 
     pub fn add(&mut self, val: u16) -> bool {
@@ -40,7 +47,7 @@ impl TailContainer {
                     false
                 }
             },
-            TailContainer::Hash(hash) => hash.insert(val)
+            TailContainer::Bitmap(hash) => hash.add(val as usize)
         }
     }
 
@@ -54,7 +61,7 @@ impl TailContainer {
                     false
                 }
             },
-            TailContainer::Hash(hash) => hash.remove(&val)
+            TailContainer::Bitmap(hash) => hash.remove(val as usize)
         }
     }
 
@@ -71,9 +78,9 @@ impl TailContainer {
                     }
                 }
             },
-            TailContainer::Hash(hash) => {
+            TailContainer::Bitmap(hash) => {
                 for i in val..=65535u16 {
-                    if hash.contains(&i) {
+                    if hash.contains(&(i as usize)) {
                         return Some(i);
                     }
                 }
@@ -96,9 +103,9 @@ impl TailContainer {
                     }
                 }
             },
-            TailContainer::Hash(hash) => {
+            TailContainer::Bitmap(hash) => {
                 for i in (0..=val).rev() {
-                    if hash.contains(&i) {
+                    if hash.contains(&(i as usize)) {
                         return Some(i);
                     }
                 }
@@ -116,11 +123,13 @@ impl TailContainer {
                     false
                 }
             },
-            TailContainer::Hash(hash) => hash.contains(&val)
+            TailContainer::Bitmap(hash) => hash.contains(&(val as usize))
         }
     }
 }
+
 /// 位图类RoaringBitMap，根据访问的位看是否被占用
+/// 本质上是将大块的bitmap分成各个小块，其中每个小块在需要存储数据的时候才会存在
 /// 解决经典的是否被占用的问题，不会一次性分配大内存
 /// 头部以val / 65536做为索引键值, 尾部分为Array及HashSet结构
 /// 当元素个数小于4096时以有序array做为索引, 当>4096以HashSet做为存储
@@ -407,17 +416,24 @@ impl RoaringBitMap {
     /// ```
     pub fn intersect(&self, other: &RoaringBitMap) -> RoaringBitMap {
         let mut map = RoaringBitMap::new();
-        let min = self.min_key.max(other.min_key);
-        let max = self.max_key.min(other.max_key);
-        for i in min..=max {
-            if self.contains(&i) && other.contains(&i) {
-                map.add(i);
+        let mut from = self.min_key.max(other.min_key);
+        let end = self.max_key.min(other.max_key);
+        while from <= end {
+            let head_from = from >> TAIL_BIT;
+            let next_from = (head_from + 1) * TAIL_NUM;
+            if self.map.contains_key(&head_from) && other.map.contains_key(&head_from) {
+                for i in from..next_from.min(end+1) {
+                    if self.contains(&i) && other.contains(&i) {
+                        map.add(i);
+                    }
+                }
             }
+            from = next_from;
         }
         map
     }
 
-    /// 取两个位图间的交集
+    /// 取两个位图间的并集
     /// # Examples
     ///
     /// ```
@@ -433,14 +449,76 @@ impl RoaringBitMap {
     /// ```
     pub fn union(&self, other: &RoaringBitMap) -> RoaringBitMap {
         let mut map = RoaringBitMap::new();
-        let min = self.min_key.min(other.min_key);
-        let max = self.max_key.max(other.max_key);
-        for i in min..=max {
-            if self.contains(&i) || other.contains(&i) {
-                map.add(i);
+        let mut from = self.min_key.min(other.min_key);
+        let end = self.max_key.max(other.max_key);
+        while from <= end {
+            let head_from = from >> TAIL_BIT;
+            let next_from = (head_from + 1) * TAIL_NUM;
+            if self.map.contains_key(&head_from) || other.map.contains_key(&head_from) {
+                for i in from..next_from.min(end+1) {
+                    if self.contains(&i) || other.contains(&i) {
+                        map.add(i);
+                    }
+                }
             }
+            from = next_from;
         }
         map
+    }
+
+    /// 取两个位图间的异或并集
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::RoaringBitMap;
+    /// fn main() {
+    ///     let mut map = RoaringBitMap::new();
+    ///     map.add_range(9, 16);
+    ///     let mut sub_map = RoaringBitMap::new();
+    ///     sub_map.add_range(7, 12);
+    ///     let map = map.union_xor(&sub_map);
+    ///     assert!(map.iter().collect::<Vec<_>>() == vec![7, 8, 13, 14, 15, 16]);
+    /// }
+    /// ```
+    pub fn union_xor(&self, other: &RoaringBitMap) -> RoaringBitMap {
+        let mut map = RoaringBitMap::new();
+        let mut from = self.min_key.min(other.min_key);
+        let end = self.max_key.max(other.max_key);
+        while from <= end {
+            let head_from = from >> TAIL_BIT;
+            let next_from = (head_from + 1) * TAIL_NUM;
+            if self.map.contains_key(&head_from) || other.map.contains_key(&head_from) {
+                for i in from..next_from.min(end+1) {
+                    if self.contains(&i) ^ other.contains(&i) {
+                        map.add(i);
+                    }
+                }
+            }
+            from = next_from;
+        }
+        map
+    }
+}
+
+impl BitAnd for &RoaringBitMap {
+    type Output=RoaringBitMap;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersect(rhs)
+    }
+}
+
+impl BitOr for &RoaringBitMap {
+    type Output=RoaringBitMap;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+impl BitXor for &RoaringBitMap {
+    type Output=RoaringBitMap;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self.union_xor(rhs)
     }
 }
 
