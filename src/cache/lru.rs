@@ -19,9 +19,11 @@ use std::{
 
 use super::{KeyRef, KeyWrapper};
 
-
+/// Lru节点数据
 struct LruEntry<K, V> {
+    /// 头部节点及尾部结点均未初始化值
     pub key: mem::MaybeUninit<K>,
+    /// 头部节点及尾部结点均未初始化值
     pub val: mem::MaybeUninit<V>,
     pub prev: *mut LruEntry<K, V>,
     pub next: *mut LruEntry<K, V>,
@@ -48,6 +50,7 @@ impl<K, V> LruEntry<K, V> {
 }
 
 
+/// LRU 全称是Least Recently Used，即最近最久未使用的意思
 /// 一个 LRU 缓存普通级的实现, 接口参照Hashmap保持一致
 /// 设置容量之后将最大保持该容量大小的数据
 /// 后进的数据将会淘汰最久没有被访问的数据
@@ -69,9 +72,13 @@ impl<K, V> LruEntry<K, V> {
 /// }
 /// ```
 pub struct LruCache<K, V, S> {
+    /// 存储数据结构
     map: HashMap<KeyRef<K>, NonNull<LruEntry<K, V>>, S>,
+    /// 缓存的总容量
     cap: usize,
+    /// 双向列表的头
     head: *mut LruEntry<K, V>,
+    /// 双向列表的尾
     tail: *mut LruEntry<K, V>,
 }
 

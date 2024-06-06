@@ -1,3 +1,4 @@
+
 use algorithm::LruCache;
 fn main() {
     let mut lru = LruCache::new(3);
