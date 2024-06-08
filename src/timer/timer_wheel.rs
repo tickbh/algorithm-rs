@@ -1,15 +1,15 @@
 use std::{collections::LinkedList, ptr};
 
-struct Entry<T> {
+struct Entry<T:Timer> {
     val: T,
     id: usize,
 }
 
 pub trait Timer {
-    
+    fn when(&self) -> usize;
 }
 
-pub struct OneTimerWheel<T> {
+pub struct OneTimerWheel<T:Timer> {
     index: usize,
     capation: usize,
     step: usize,
@@ -20,7 +20,7 @@ pub struct OneTimerWheel<T> {
     name: &'static str,
 }
 
-impl<T> OneTimerWheel<T> {
+impl<T:Timer> OneTimerWheel<T> {
     pub fn new(capation: usize, step: usize, name: &'static str) -> Self {
         let mut slots = vec![];
         for _ in 0..capation {
@@ -56,7 +56,22 @@ impl<T> OneTimerWheel<T> {
     }
 
     fn add_timer(&mut self, entry: Entry<T>) {
+        // entry.val.when();
+        let offset = entry.val.when();
+        self.add_timer_with_offset(entry, offset);
+    }
 
+    fn add_timer_with_offset(&mut self, entry: Entry<T>, offset: usize) {
+        if offset < self.step && !self.child.is_null() {
+            unsafe {
+                (*self.child).add_timer_with_offset(entry, offset);
+            }
+        } else {
+            // 当前偏差值还在自己的容纳范围之前，做容错，排在最后处理位
+            let index = (offset / self.step).max(1).min(self.capation);
+            let index = (index + self.index) % self.capation;
+            self.slots[index].push_back(entry); 
+        }
     }
 
     pub fn update_index(&mut self, offset: usize, result: &mut Vec<T>) -> usize {
@@ -78,7 +93,7 @@ impl<T> OneTimerWheel<T> {
             unsafe {
                 let list = &mut self.slots[self.index];
                 while let Some(val) = list.pop_back() {
-                    // (*self.child).add_timer()
+                    (*self.child).add_timer(val);
                 }
             }
         }
@@ -86,7 +101,7 @@ impl<T> OneTimerWheel<T> {
     }
 }
 
-pub struct TimerWheel<T> {
+pub struct TimerWheel<T:Timer> {
     greatest: *mut OneTimerWheel<T>,
     lessest: *mut OneTimerWheel<T>,
     min_step: usize,
@@ -95,7 +110,7 @@ pub struct TimerWheel<T> {
     all_deltatime: usize,
 }
 
-impl<T> TimerWheel<T> {
+impl<T:Timer> TimerWheel<T> {
     pub fn new() -> Self {
         Self {
             greatest: ptr::null_mut(),
@@ -144,8 +159,15 @@ impl<T> TimerWheel<T> {
         for r in result.into_iter() {
             (*f)(r);
         }
+    }
 
-
-
+    pub fn add_timer(&mut self, val: T) -> usize {
+        let timer_id = self.next_timer_id;
+        self.next_timer_id += 1;
+        let entry = Entry { val, id: timer_id };
+        unsafe {
+            (*self.greatest).add_timer(entry);
+        }
+        timer_id
     }
 }
