@@ -18,21 +18,25 @@ fn main() {
 
     timer.add_timer(Test { s: 100} );
     println!("timer delay = {}", timer.get_delay_id());
-    timer.add_timer(Test { s: 600} );
+    let t = timer.add_timer(Test { s: 600} );
     println!("timer delay = {}", timer.get_delay_id());
     timer.add_timer(Test { s: 1} );
     println!("timer delay = {}", timer.get_delay_id());
+    // timer.del_timer(t);
 
-    timer.update_deltatime(20, &mut |v| {
+    timer.update_deltatime_with_callback(20, &mut |_, v| {
         println!("vvv = {}", v.s);
     });
     timer.add_timer(Test { s: 2} );
 
-    timer.update_deltatime(80, &mut |v| {
+    timer.update_deltatime_with_callback(80, &mut |_, v| {
         println!("vvv1 = {}", v.s);
     });
 
-    timer.update_deltatime(380, &mut |v| {
+    let xx = 0;
+    timer.update_deltatime_with_callback(380, &mut |t, v| {
         println!("vvv2 = {}", v.s);
+        t.add_timer(v);
+        println!("xxx = {}", xx);
     });
 }
