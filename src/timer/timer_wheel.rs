@@ -13,7 +13,6 @@ pub struct OneTimerWheel<T:Timer> {
     index: usize,
     capation: usize,
     step: usize,
-    real_step: usize,
     slots: Vec<LinkedList<Entry<T>>>,
     parent: *mut OneTimerWheel<T>,
     child: *mut OneTimerWheel<T>,
@@ -30,7 +29,6 @@ impl<T:Timer> OneTimerWheel<T> {
             index: 0,
             capation,
             step,
-            real_step: step,
             slots,
             parent: ptr::null_mut(),
             child: ptr::null_mut(),
@@ -56,19 +54,21 @@ impl<T:Timer> OneTimerWheel<T> {
     }
 
     fn add_timer(&mut self, entry: Entry<T>) {
-        // entry.val.when();
         let offset = entry.val.when();
         self.add_timer_with_offset(entry, offset);
     }
 
     fn add_timer_with_offset(&mut self, entry: Entry<T>, offset: usize) {
-        if offset < self.step && !self.child.is_null() {
+        if offset > self.capation * self.step {
+            let index = (self.index + self.capation - 1) % self.capation;
+            self.slots[index].push_back(entry); 
+        } else if offset < self.step && !self.child.is_null() {
             unsafe {
                 (*self.child).add_timer_with_offset(entry, offset);
             }
         } else {
             // 当前偏差值还在自己的容纳范围之前，做容错，排在最后处理位
-            let index = (offset / self.step).max(1).min(self.capation);
+            let index = (offset / self.step).max(1);
             let index = (index + self.index) % self.capation;
             self.slots[index].push_back(entry); 
         }
@@ -97,7 +97,7 @@ impl<T:Timer> OneTimerWheel<T> {
                 }
             }
         }
-        next / self.step
+        next / self.capation
     }
 }
 
@@ -124,6 +124,7 @@ impl<T:Timer> TimerWheel<T> {
 
     pub fn append_timer_wheel(&mut self, slots: usize, step: usize, name: &'static str) {
         let one = Box::into_raw(Box::new(OneTimerWheel::new(slots, step, name)));
+        self.delay_id = self.delay_id.max(slots * step);
         self.lessest = one;
         if self.greatest.is_null() {
             self.greatest = one;
@@ -144,6 +145,8 @@ impl<T:Timer> TimerWheel<T> {
             return;
         }
 
+        self.all_deltatime -= offset * self.min_step;
+
         let mut result = vec![];
         let mut wheel = self.lessest;
         while !wheel.is_null() {
@@ -159,15 +162,42 @@ impl<T:Timer> TimerWheel<T> {
         for r in result.into_iter() {
             (*f)(r);
         }
+        self.calc_delay_id();
+    }
+
+    fn calc_delay_id(&mut self) {
+        let mut next_delay_id = 0;
+        let mut wheel = self.lessest;
+        'outer: while !wheel.is_null() {
+            unsafe {
+                let (step, index, cap) = ((*wheel).step, (*wheel).index, (*wheel).capation);
+                for i in 0..cap {
+                    let index = (index + i) % cap;
+                    if !(*wheel).slots[index].is_empty() {
+                        next_delay_id = i * step;
+                        break 'outer;
+                    }
+                }
+                next_delay_id = cap * step;
+                wheel = (*wheel).parent;
+            }
+        }
+        println!("next delay id = {}", next_delay_id);
+        self.delay_id = next_delay_id;
     }
 
     pub fn add_timer(&mut self, val: T) -> usize {
         let timer_id = self.next_timer_id;
         self.next_timer_id += 1;
+        self.delay_id = self.delay_id.min(val.when());
         let entry = Entry { val, id: timer_id };
         unsafe {
             (*self.greatest).add_timer(entry);
         }
         timer_id
+    }
+
+    pub fn get_delay_id(&self) -> usize {
+        self.delay_id
     }
 }

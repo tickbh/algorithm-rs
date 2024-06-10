@@ -9,4 +9,4 @@ mod timer;
 pub use cache::{LruCache, LruKCache, LfuCache, Slab, Reinit};
 pub use tree::RBTree;
 pub use map::{BitMap, RoaringBitMap};
-pub use timer::TimerWheel;
+pub use timer::{TimerWheel, Timer};
