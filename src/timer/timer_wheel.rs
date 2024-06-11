@@ -8,7 +8,38 @@ struct Entry<T:Timer> {
 pub trait Timer {
     /// 当时与现在的间隔，以确定插入确定的槽
     fn when(&self) -> usize;
+    /// 可能需要修改对象，此处用可变值
+    fn when_mut(&mut self) -> usize {
+        self.when()
+    }
 }
+
+macro_rules! impl_primitive_timer {
+    ($ty:ident) => {
+        impl Timer for $ty {
+            #[inline(always)]
+            fn when(&self) -> usize {
+                *self as usize
+            }
+        }
+    };
+}
+
+impl_primitive_timer!(u8);
+impl_primitive_timer!(u16);
+impl_primitive_timer!(u32);
+impl_primitive_timer!(u64);
+impl_primitive_timer!(u128);
+impl_primitive_timer!(i8);
+impl_primitive_timer!(i16);
+impl_primitive_timer!(i32);
+impl_primitive_timer!(i64);
+impl_primitive_timer!(i128);
+impl_primitive_timer!(f32);
+impl_primitive_timer!(f64);
+impl_primitive_timer!(usize);
+
+
 
 /// 单轮结构
 pub struct OneTimerWheel<T:Timer> {
@@ -63,8 +94,8 @@ impl<T:Timer> OneTimerWheel<T> {
     }
 
 
-    fn add_timer(&mut self, entry: Entry<T>) {
-        let offset = entry.val.when().max(1);
+    fn add_timer(&mut self, mut entry: Entry<T>) {
+        let offset = entry.val.when_mut().max(1);
         self.add_timer_with_offset(entry, offset);
     }
 
@@ -85,8 +116,8 @@ impl<T:Timer> OneTimerWheel<T> {
         None
     }
 
-    fn add_step_timer(&mut self, entry: Entry<T>) {
-        let offset = entry.val.when().max(1) % self.capation;
+    fn add_step_timer(&mut self, mut entry: Entry<T>) {
+        let offset = entry.val.when_mut().max(1) % self.capation;
         self.add_timer_with_offset(entry, offset);
     }
 
@@ -183,6 +214,7 @@ impl<T:Timer> TimerWheel<T> {
     }
 
     pub fn append_timer_wheel(&mut self, slots: usize, step: usize, name: &'static str) {
+        debug_assert!(self.len == 0, "必须时轮为空才可改变时轮");
         let one = Box::into_raw(Box::new(OneTimerWheel::new(slots, step, name)));
         self.delay_id = self.delay_id.max(slots * step);
         self.lessest = one;
@@ -269,10 +301,11 @@ impl<T:Timer> TimerWheel<T> {
         None
     }
 
-    pub fn add_timer(&mut self, val: T) -> usize {
+    pub fn add_timer(&mut self, mut val: T) -> usize {
+        debug_assert!(!self.greatest.is_null(), "必须设置时轮才能添加元素");
         let timer_id = self.next_timer_id;
         self.next_timer_id += 1;
-        self.delay_id = self.delay_id.min(val.when());
+        self.delay_id = self.delay_id.min(val.when_mut());
         let entry = Entry { val, id: timer_id };
         unsafe {
             (*self.greatest).add_timer(entry);

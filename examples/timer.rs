@@ -13,6 +13,10 @@ impl Timer for Test {
 
 fn main() {
     let mut timer = TimerWheel::new();
+    timer.append_timer_wheel(12, 60*60, "HourWheel");
+    timer.append_timer_wheel(60, 60, "MinuteWheel");
+    timer.append_timer_wheel(60, 1, "SecondWheel");
+
     timer.append_timer_wheel(24, 20, "wheel");
     timer.append_timer_wheel(20, 1, "wheel");
 
