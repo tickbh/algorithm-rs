@@ -1,6 +1,6 @@
 [package]
 name = "algorithm"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
 description = "about algorithm data structure, now has lru/lru-k/lfu/slab/rbtree/roaring_bitmap/timer_wheelss, 关于算法常用的数据结构"
