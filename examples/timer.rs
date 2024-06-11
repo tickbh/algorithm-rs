@@ -1,4 +1,4 @@
-use algorithm::{Timer, TimerWheel};
+use algorithm::TimerWheel;
 
 fn main() {
     let mut timer = TimerWheel::new();
@@ -15,6 +15,8 @@ fn main() {
     timer.add_timer(1);
     assert_eq!(timer.get_delay_id(), 1);
     timer.del_timer(t);
+    timer.add_timer(150);
+    assert_eq!(timer.get_delay_id(), 1);
 
     let val = timer.update_deltatime(30).unwrap();
     assert_eq!(val, vec![1, 30]);
@@ -24,5 +26,8 @@ fn main() {
     let val = timer.update_deltatime(119).unwrap();
     assert_eq!(val, vec![2, 149]);
 
+    let val = timer.update_deltatime(1).unwrap();
+    assert_eq!(val, vec![150]);
+    
     assert!(timer.is_empty());
 }
