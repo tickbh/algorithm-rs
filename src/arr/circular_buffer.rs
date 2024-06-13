@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut};
+use std::{marker::PhantomData, ops::{Index, IndexMut}};
 
 /// 循环的圆结构
 /// 如果数据满了之后将自动在结尾后续添加,并保持最大个数
@@ -13,8 +13,8 @@ use std::ops::{Index, IndexMut};
 ///     circular.push_back(2);
 ///     circular.push_back(3);
 ///     assert_eq!(circular.len(), 2);
-///     assert_eq!(circular[&0], 2);
-///     assert_eq!(circular[&1], 3);
+///     assert_eq!(circular[0], 2);
+///     assert_eq!(circular[1], 3);
 /// }
 /// ```
 pub struct CircularBuffer<T> {
@@ -139,7 +139,7 @@ impl<T> CircularBuffer<T> {
     ///     assert_eq!(circular.is_empty(), true);
     ///     circular.push_back(1);
     ///     circular.push_back(2);
-    ///     assert_eq!(circular[&0], 1);
+    ///     assert_eq!(circular[0], 1);
     /// }
     /// ```
     pub fn push_back(&mut self, val: T) {
@@ -170,7 +170,7 @@ impl<T> CircularBuffer<T> {
     ///     assert_eq!(circular.is_empty(), true);
     ///     circular.push_front(1);
     ///     circular.push_front(2);
-    ///     assert_eq!(circular[&0], 2);
+    ///     assert_eq!(circular[0], 2);
     /// }
     /// ```
     pub fn push_front(&mut self, val: T) {
@@ -202,9 +202,9 @@ impl<T> CircularBuffer<T> {
     ///     assert_eq!(circular.is_empty(), true);
     ///     circular.push_front(1);
     ///     circular.push_front(2);
-    ///     assert_eq!(circular[&0], 2);
+    ///     assert_eq!(circular[0], 2);
     ///     circular.pop_front();
-    ///     assert_eq!(circular[&0], 1);
+    ///     assert_eq!(circular[0], 1);
     /// }
     /// ```
     pub fn pop_front(&mut self) {
@@ -224,9 +224,9 @@ impl<T> CircularBuffer<T> {
     ///     assert_eq!(circular.is_empty(), true);
     ///     circular.push_back(1);
     ///     circular.push_back(2);
-    ///     assert_eq!(circular[&0], 1);
+    ///     assert_eq!(circular[0], 1);
     ///     circular.pop_back();
-    ///     assert_eq!(circular[&0], 1);
+    ///     assert_eq!(circular[0], 1);
     /// }
     /// ```
     pub fn pop_back(&mut self) {
@@ -261,16 +261,44 @@ impl<T> CircularBuffer<T> {
             cap: self.cap,
         }
     }
+
+    /// 迭代更改器
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::CircularBuffer;
+    /// fn main() {
+    ///     let mut circular = CircularBuffer::new(2);
+    ///     assert_eq!(circular.is_empty(), true);
+    ///     circular.push_back(1);
+    ///     circular.push_back(2);
+    ///     let val: Vec<i32> = circular.iter_mut().map(|v| { *v *= 2; *v }).collect();
+    ///     assert_eq!(val, vec![2, 4]);
+    ///     let val: Vec<i32> = circular.iter_mut().rev().map(|v| { *v *= 2; *v }).collect();
+    ///     assert_eq!(val, vec![8, 4]);
+    /// }
+    /// ```
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        IterMut {
+            arr: self.arr.as_mut_ptr(),
+            len: self.len,
+            head: self.head,
+            tail: self.tail,
+            cap: self.cap,
+            _marker: PhantomData,
+        }
+    }
 }
 
 
-impl<T> Index<&usize> for CircularBuffer<T> {
+impl<T> Index<usize> for CircularBuffer<T> {
     type Output = T;
 
     #[inline]
-    fn index(&self, index: &usize) -> &T {
-        if *index < self.len {
-            let ridx = (*index + self.head) % self.cap;
+    fn index(&self, index: usize) -> &T {
+        if index < self.len {
+            let ridx = (index + self.head) % self.cap;
             &self.arr[ridx]
         } else {
             panic!("index error");
@@ -278,11 +306,11 @@ impl<T> Index<&usize> for CircularBuffer<T> {
     }
 }
 
-impl<T> IndexMut<&usize> for CircularBuffer<T> {
+impl<T> IndexMut<usize> for CircularBuffer<T> {
     #[inline]
-    fn index_mut(&mut self, index: &usize) -> &mut T {
-        if *index < self.len {
-            let ridx = (*index + self.head) % self.cap;
+    fn index_mut(&mut self, index: usize) -> &mut T {
+        if index < self.len {
+            let ridx = (index + self.head) % self.cap;
             &mut self.arr[ridx]
         } else {
             panic!("index error");
@@ -341,8 +369,71 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
     }
 }
 
+pub struct IterMut<'a, T: 'a> {
+    len: usize,
+    arr: *mut T,
+    head: usize,
+    tail: usize,
+    cap: usize,
+    _marker: PhantomData<&'a mut T>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+        let now = self.head;
+        self.head = (self.head + 1) % self.cap;
+        self.len -= 1;
+        unsafe {
+            let ptr = self.arr.add(now);
+            return Some(&mut *ptr)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
 
 
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+        let now = self.tail;
+        self.tail = (self.tail + self.cap - 1) % self.cap;
+        self.len -= 1;
+        unsafe {
+            let ptr = self.arr.add(now);
+            return Some(&mut *ptr)
+        }
+    }
+}
+
+
+
+impl<T> PartialEq for CircularBuffer<T>
+    where
+        T: Eq,
+{
+    fn eq(&self, other: &CircularBuffer<T>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        self.iter().enumerate().all(|(idx, value)| &other[idx] == value)
+    }
+}
+
+impl<T> Eq for CircularBuffer<T>
+    where
+        T: Eq,
+{}
 
 #[cfg(test)]
 mod tests {
@@ -350,6 +441,13 @@ mod tests {
 
     #[test]
     fn test_iter() {
-
+        let mut circular = CircularBuffer::new(2);
+        assert_eq!(circular.is_empty(), true);
+        circular.push_back(1);
+        circular.push_back(2);
+        let val: Vec<i32> = circular.iter().map(|s| *s).collect();
+        assert_eq!(val, vec![1, 2]);
+        let val: Vec<i32> = circular.iter().rev().map(|s| *s).collect();
+        assert_eq!(val, vec![2, 1]);
     }
 }
