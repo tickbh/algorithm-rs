@@ -549,10 +549,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
     /// }
     /// ```
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
-        self.capture_insert(k, v).map(|(_, v)| v)
+        self.capture_insert(k, v).map(|(_, v, _)| v)
     }
 
-    pub fn capture_insert(&mut self, k: K, mut v: V) -> Option<(K, V)> {
+    pub fn capture_insert(&mut self, k: K, mut v: V) -> Option<(K, V, bool)> {
         let key = KeyRef::new(&k);
         match self.map.get_mut(&key) {
             Some(entry) => {
@@ -563,17 +563,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
                 self.detach(entry_ptr);
                 self.attach(entry_ptr);
 
-                Some((k, v))
+                Some((k, v, true))
             }
             None => {
-                let (_, entry) = self.replace_or_create_node(k, v);
+                let (val, entry) = self.replace_or_create_node(k, v);
                 let entry_ptr = entry.as_ptr();
                 self.attach(entry_ptr);
                 unsafe {
                     self.map
                         .insert(KeyRef::new((*entry_ptr).key.as_ptr()), entry);
                 }
-                None
+                val.map(|(k, v)| (k, v, false))
             }
         }
     }

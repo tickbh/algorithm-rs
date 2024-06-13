@@ -282,6 +282,21 @@ impl<K, V, S> LruCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
+    pub fn full_increase(&mut self) {
+        if self.cap == self.len() {
+            self.cap += 1;
+        }
+    }
+    
+    pub fn full_decrease(&mut self) -> Option<(K, V)> {
+        if self.cap == self.len() {
+            let ret = self.pop_last();
+            self.cap = self.cap.saturating_sub(1);
+            ret
+        } else {
+            None
+        }
+    }
     /// 排出当前数据
     ///
     /// ```
@@ -406,15 +421,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             K: Borrow<Q>,
             Q: Hash + Eq + ?Sized,
     {
-        match self.map.get(KeyWrapper::from_ref(k)) {
-            Some(l) => {
-                let node = l.as_ptr();
-                self.detach(node);
-                self.attach(node);
-                unsafe { Some(&*(*node).val.as_ptr()) }
-            }
-            None => None,
-        }
+        self.get_key_value(k).map(|(_, v)| v)
     }
 
     /// 获取key值相对应的key和value值, 根据hash判定
@@ -473,6 +480,22 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
+    
+    pub fn get_mut_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &mut V)>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
+        match self.map.get(KeyWrapper::from_ref(k)) {
+            Some(l) => {
+                let node = l.as_ptr();
+                self.detach(node);
+                self.attach(node);
+                unsafe { Some(( &*(*node).key.as_mut_ptr(), &mut *(*node).val.as_mut_ptr())) }
+            }
+            None => None,
+        }
+    }
     /// 插入值, 如果值重复将返回原来的数据
     ///
     /// ```
@@ -485,10 +508,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// }
     /// ```
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
-        self.capture_insert(k, v).map(|(_, v)| v)
+        self.capture_insert(k, v).map(|(_, v, _)| v)
     }
 
-    pub fn capture_insert(&mut self, k: K, mut v: V) -> Option<(K, V)> {
+    pub fn capture_insert(&mut self, k: K, mut v: V) -> Option<(K, V, bool)> {
         let key = KeyRef::new(&k);
         match self.map.get_mut(&key) {
             Some(entry) => {
@@ -499,17 +522,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 self.detach(entry_ptr);
                 self.attach(entry_ptr);
 
-                Some((k, v))
+                Some((k, v, true))
             }
             None => {
-                let (_, entry) = self.replace_or_create_node(k, v);
+                let (val, entry) = self.replace_or_create_node(k, v);
                 let entry_ptr = entry.as_ptr();
                 self.attach(entry_ptr);
                 unsafe {
                     self.map
                         .insert(KeyRef::new((*entry_ptr).key.as_ptr()), entry);
                 }
-                None
+                val.map(|(k, v)| (k, v, false))
             }
         }
     }
