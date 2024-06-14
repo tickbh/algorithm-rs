@@ -12,7 +12,7 @@
 
 use std::{
     borrow::Borrow,
-    collections::{hash_map::RandomState},
+    collections::hash_map::RandomState,
     fmt::{self, Debug},
     hash::{BuildHasher, Hash},
     ops::{Index, IndexMut},
@@ -54,6 +54,7 @@ pub struct ArcCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V> ArcCache<K, V, RandomState> {
+    /// 因为存在四个数组, 所以实际的容量为这个的4倍
     pub fn new(cap: usize) -> Self {
         ArcCache::with_hasher(cap, RandomState::new())
     }
