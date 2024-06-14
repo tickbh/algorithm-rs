@@ -158,7 +158,7 @@ impl<K, V, S> LfuCache<K, V, S> {
     /// }
     /// ```
     pub fn set_default_count(&mut self, default_count: usize) {
-        self.default_count = default_count;
+        self.default_count = default_count.saturating_sub(1);
     }
 
     pub fn get_default_count(&self) -> usize {
@@ -361,6 +361,18 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
             ret
         } else {
             None
+        }
+    }
+
+    fn try_fix_entry(&mut self, entry: *mut LfuEntry<K, V>) {
+        unsafe {
+            if get_freq_by_times((*entry).counter) != get_freq_by_times((*entry).counter + 1) {
+                self.visit_count += 1;
+                (*entry).counter += 1;
+            } else {
+                self.detach(entry);
+                self.attach(entry);
+            }
         }
     }
 
@@ -624,8 +636,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
                 let node = l.as_ptr();
-                self.detach(node);
-                self.attach(node);
+                self.try_fix_entry(node);
                 unsafe { Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr())) }
             }
             None => None,
@@ -660,9 +671,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
                 let node = l.as_ptr();
-
-                self.detach(node);
-                self.attach(node);
+                self.try_fix_entry(node);
                 unsafe { Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr())) }
             }
             None => None,
@@ -692,8 +701,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                 unsafe {
                     mem::swap(&mut *(*entry_ptr).val.as_mut_ptr(), &mut v);
                 }
-                self.detach(entry_ptr);
-                self.attach(entry_ptr);
+                self.try_fix_entry(entry_ptr);
 
                 Some((k, v, true))
             }
@@ -768,7 +776,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                 NonNull::new_unchecked(Box::into_raw(Box::new(LfuEntry::new_counter(
                     k,
                     v,
-                    self.default_count.saturating_sub(1),
+                    self.default_count,
                 ))))
             })
         }
