@@ -40,6 +40,17 @@ impl<K: PartialEq> PartialEq for KeyRef<K> {
 
 impl<K: Eq> Eq for KeyRef<K> {}
 
+impl<K: Eq> PartialOrd for KeyRef<K> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.k.partial_cmp(&other.k)
+    }
+}
+
+impl<K: Eq> Ord for KeyRef<K> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.k.cmp(&other.k)
+    }
+}
 
 // 确保新类型与其内部类型的内存布局完全相同
 #[repr(transparent)]
