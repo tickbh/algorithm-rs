@@ -183,13 +183,14 @@ impl<K, V, S> LfuCache<K, V, S> {
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     lru.set_reduce_count(100);
-    ///     assert!(lru.get_visit(&"hello") == Some(5));
-    ///     assert!(lru.get_visit(&"this") == Some(5));
+    ///     assert_eq!(lru.get_visit(&"hello"), Some(5));
+    ///     assert_eq!(lru.get_visit(&"this"), Some(5));
     ///     for _ in 0..98 {
     ///         let _ = lru.get("this");
     ///     }
-    ///     assert!(lru.get_visit(&"this") == Some(51));
-    ///     assert!(lru.get_visit(&"hello") == Some(2));
+    ///     lru.insert("hello", "new");
+    ///     assert_eq!(lru.get_visit(&"this"), Some(51));
+    ///     assert_eq!(lru.get_visit(&"hello"), Some(3));
     ///     let mut keys = lru.keys();
     ///     assert!(keys.next()==Some(&"this"));
     ///     assert!(keys.next()==Some(&"hello"));
@@ -1378,6 +1379,7 @@ mod tests {
         m.insert(2, 4);
         let _ = m.get(&2);
         let _ = m.get(&2);
+        let _ = m.get(&2);
         m.insert(1, 2);
         assert_eq!(m.len(), 3);
         assert_eq!(m.pop_last(), Some((1, 2)));
@@ -1577,6 +1579,7 @@ mod tests {
         a.insert(2, 2);
         let _ = a.get(&2);
         a.insert(3, 3);
+        let _ = a.get(&3);
         let _ = a.get(&3);
         let _ = a.get(&3);
 

@@ -10,8 +10,9 @@ fn main() {
     for _ in 0..98 {
         let _ = lru.get("this");
     }
+    lru.insert("hello", "new");
     assert!(lru.get_visit(&"this") == Some(51));
-    assert!(lru.get_visit(&"hello") == Some(2));
+    assert!(lru.get_visit(&"hello") == Some(3));
     let mut keys = lru.keys();
     assert!(keys.next()==Some(&"this"));
     assert!(keys.next()==Some(&"hello"));
