@@ -19,10 +19,11 @@ macro_rules! do_test_bench {
             }
         }
         cost.push(now.elapsed().as_micros());
-        println!("{}\t{}\t{:.2}%", $name, cost.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\t"), hit as f64 * 100.0 / all as f64);
+        println!("|{}|{}|{:.2}%|", $name, cost.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\t"), hit as f64 * 100.0 / all as f64);
     };
 }
 
+#[allow(dead_code)]
 fn build_order_data(num: usize) -> Vec<(usize, usize)> {
     let mut data = vec![];
     for i in 0..num {
@@ -32,14 +33,31 @@ fn build_order_data(num: usize) -> Vec<(usize, usize)> {
     data
 }
 
+#[allow(dead_code)]
 fn build_freq_data(num: usize) -> Vec<(usize, usize)> {
     let mut data = vec![];
     for i in 0..num {
         data.push((i, i + 1));
-        // data.push((i+1, i + 2));
         let ridx = i / 4 + 1;
         for _ in 0..1 {
             data.push((rand::random::<usize>() % ridx, 0));
+        }
+    }
+    data
+}
+
+
+#[allow(dead_code)]
+fn build_high_freq_data(num: usize) -> Vec<(usize, usize)> {
+    let mut data = vec![];
+    for i in 0..num {
+        data.push((i, i + 1));
+        let ridx = (i / 4 + 1).min(1000);
+        for _ in 0..10 {
+            data.push((rand::random::<usize>() % ridx, 0));
+        }
+        for _ in 0..5 {
+            data.push((i + num + rand::random::<usize>() % num, i + 1));
         }
     }
     data
@@ -51,13 +69,15 @@ fn do_bench(num: usize) {
     let mut lruk = LruKCache::<usize, usize, RandomState>::new(num);
     let mut lfu = LfuCache::<usize, usize, RandomState>::new(num);
     let mut arc = ArcCache::<usize, usize, RandomState>::new(num / 2);
-    println!("名字\t耗时\t命中率\t");
-    let order_data = build_freq_data(evict);
-    do_test_bench!("LruCache", lru, num, evict, &order_data);
-    // do_test_bench!("LruKCache", lruk, num, evict, &order_data);
-    do_test_bench!("LfuCache", lfu, num, evict, &order_data);
-    // do_test_bench!("ArcCache", arc, num, evict, &order_data);
-    // println!("耗时:{}", set_timer);
+    println!("|名字|耗时|命中率|");
+    println!("|---|---|---|");
+    // let data = build_freq_data(evict);
+    let data = build_high_freq_data(evict);
+    // let data = build_order_data(evict);
+    do_test_bench!("LruCache", lru, num, evict, &data);
+    do_test_bench!("LruKCache", lruk, num, evict, &data);
+    do_test_bench!("LfuCache", lfu, num, evict, &data);
+    do_test_bench!("ArcCache", arc, num, evict, &data);
 }
 
 fn main() {

@@ -3,54 +3,49 @@
 
 extern crate test;
 
-use std::mem::replace;
+use algorithm::{ArcCache, LfuCache, LruCache, LruKCache};
 use test::Bencher;
 
-// bench: find the `BENCH_SIZE` first terms of the fibonacci sequence
-static BENCH_SIZE: usize = 30;
+static BENCH_SIZE: usize = 10000;
 
-// recursive fibonacci
-fn fibonacci(n: usize) -> u32 {
-    if n < 2 {
-        1
-    } else {
-        fibonacci(n - 1) + fibonacci(n - 2)
-    }
+macro_rules! do_test_bench {
+    ($cache: expr) => {
+        for i in 0..BENCH_SIZE {
+            $cache.insert(i, i);
+            $cache.get(&i);
+        }
+    };
 }
-
-// iterative fibonacci
-struct Fibonacci {
-    curr: u32,
-    next: u32,
-}
-
-impl Iterator for Fibonacci {
-    type Item = u32;
-    fn next(&mut self) -> Option<u32> {
-        let new_next = self.curr + self.next;
-        let new_curr = replace(&mut self.next, new_next);
-
-        Some(replace(&mut self.curr, new_curr))
-    }
-}
-
-fn fibonacci_sequence() -> Fibonacci {
-    Fibonacci { curr: 1, next: 1 }
-}
-
-// function to benchmark must be annotated with `#[bench]`
 #[bench]
-fn recursive_fibonacci(b: &mut Bencher) {
-    // exact code to benchmark must be passed as a closure to the iter
-    // method of Bencher
+fn calc_lru(b: &mut Bencher) {
     b.iter(|| {
-        (0..BENCH_SIZE).map(fibonacci).collect::<Vec<u32>>()
+        let mut lru = LruCache::new(BENCH_SIZE / 2);
+        do_test_bench!(lru);
+    })
+}
+
+
+#[bench]
+fn calc_lruk(b: &mut Bencher) {
+    b.iter(|| {
+        let mut lruk = LruKCache::new(BENCH_SIZE / 2);
+        do_test_bench!(lruk);
     })
 }
 
 #[bench]
-fn iterative_fibonacci(b: &mut Bencher) {
+fn calc_lfu(b: &mut Bencher) {
     b.iter(|| {
-        fibonacci_sequence().take(BENCH_SIZE).collect::<Vec<u32>>()
+        let mut lfu = LfuCache::new(BENCH_SIZE / 2);
+        do_test_bench!(lfu);
     })
 }
+
+#[bench]
+fn calc_arc(b: &mut Bencher) {
+    b.iter(|| {
+        let mut arc = ArcCache::new(BENCH_SIZE / 2);
+        do_test_bench!(arc);
+    })
+}
+
