@@ -26,35 +26,39 @@ use lazy_static::lazy_static;
 use super::{KeyRef, KeyWrapper};
 
 /// 避免hash表爆炸, 次数与频次映射
-/// 如0:0, 1:1, 2:2, 3:3, 4:4, 5:5, 10:10, 11-20:11, 21-50:12,51-100:13, 100-500:14, 500-1000:15
-/// 1001-10000:16,10001-100000:17,100001:1000000:18等
 fn get_freq_by_times(times: usize) -> u8 {
     lazy_static! {
-        static ref CACHE_MAP: HashMap<usize, u8> = {
-            let mut cache = HashMap::new();
-            for i in 0..=10 {
-                cache.insert(i, i as u8);
-            }
-            for i in 11..=20 {
-                cache.insert(i, 11);
-            }
-            for i in 21..=50 {
-                cache.insert(i, 12);
-            }
-            for i in 51..=100 {
-                cache.insert(i, 13);
-            }
-            for i in 101..=500 {
-                cache.insert(i, 14);
-            }
-            for i in 501..=1000 {
-                cache.insert(i, 15);
+        static ref CACHE_ARR: Vec<u8> = {
+            let vec = vec![
+                (0, 0, 0u8),
+                (1, 1, 1u8),
+                (2, 3, 2u8),
+                (4, 4, 3u8),
+                (5, 5, 4u8),
+                (6, 7, 5u8),
+                (8, 9, 6u8),
+                (10, 12, 7u8),
+                (13, 16, 8u8),
+                (16, 21, 9u8),
+                (22, 40, 10u8),
+                (41, 79, 11u8),
+                (80, 159, 12u8),
+                (160, 499, 13u8),
+                (500, 999, 14u8),
+                (999, 1999, 15u8),
+            ];
+            let mut cache = vec![0;2000];
+            for v in vec {
+                for i in v.0..=v.1 {
+                    cache[i] = v.2;
+                }
             }
             cache
         };
+        static ref CACHE_LEN: usize = CACHE_ARR.len();
     };
-    if let Some(k) = CACHE_MAP.get(&times) {
-        return *k;
+    if times < *CACHE_LEN {
+        return CACHE_ARR[times];
     }
     if times < 10000 {
         return 16;
@@ -117,6 +121,7 @@ pub struct LfuCache<K, V, S> {
     times_map: HashMap<u8, HashSet<KeyRef<K>>>,
     cap: usize,
     max_freq: u8,
+    min_freq: u8,
     visit_count: usize,
 
     default_count: usize,
@@ -139,8 +144,9 @@ impl<K, V, S> LfuCache<K, V, S> {
             times_map: HashMap::new(),
             visit_count: 0,
             max_freq: 0,
-            reduce_count: 1000000,
-            default_count: 5,
+            min_freq: u8::MAX,
+            reduce_count: cap.saturating_mul(100),
+            default_count: 4,
             cap,
         }
     }
@@ -239,7 +245,6 @@ impl<K, V, S> LfuCache<K, V, S> {
     pub fn reserve(&mut self, additional: usize) {
         self.cap += additional;
     }
-
 
     /// 遍历当前的所有值
     ///
@@ -347,13 +352,12 @@ impl<K, V, S> LfuCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
-    
     pub fn full_increase(&mut self) {
         if self.cap == self.len() {
             self.cap += 1;
         }
     }
-    
+
     pub fn full_decrease(&mut self) -> Option<(K, V)> {
         if self.cap == self.len() {
             let ret = self.pop_last();
@@ -366,7 +370,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
 
     fn try_fix_entry(&mut self, entry: *mut LfuEntry<K, V>) {
         unsafe {
-            if get_freq_by_times((*entry).counter) != get_freq_by_times((*entry).counter + 1) {
+            if get_freq_by_times((*entry).counter) == get_freq_by_times((*entry).counter + 1) {
                 self.visit_count += 1;
                 (*entry).counter += 1;
             } else {
@@ -393,6 +397,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
             (*entry).counter += 1;
             let freq = get_freq_by_times((*entry).counter);
             self.max_freq = self.max_freq.max(freq);
+            self.min_freq = self.min_freq.min(freq);
             self.times_map
                 .entry(freq)
                 .or_default()
@@ -405,6 +410,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     fn check_reduce(&mut self) {
         if self.visit_count >= self.reduce_count {
             let mut max = 0;
+            let mut min = u8::MAX;
             for (k, v) in self.map.iter() {
                 unsafe {
                     let node = v.as_ptr();
@@ -412,6 +418,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     (*node).counter /= 2;
                     let next = get_freq_by_times((*node).counter);
                     max = max.max(next);
+                    min = min.min(next);
                     if freq != next {
                         self.times_map.entry(freq).and_modify(|v| {
                             v.remove(k);
@@ -424,31 +431,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                 }
             }
             self.max_freq = max;
+            self.min_freq = min;
             self.visit_count = 0;
         }
     }
 
-    // /// 加到队列中
-    // fn reattach(&mut self, entry: *mut LfuEntry<K, V>) {
-    //     unsafe {
-    //         self.visit_count += 1;
-    //         let freq = get_freq_by_times((*entry).counter);
-    //         (*entry).counter += 1;
-    //         let next_freq = get_freq_by_times((*entry).counter);
-    //         self.max_freq = self.max_freq.max(next_freq);
-    //         if freq != next_freq {
-    //             self.times_map.entry(freq).and_modify(|v| {
-    //                 v.remove(&(*entry).key_ref());
-    //             });
-    //             self.times_map
-    //                 .entry(next_freq)
-    //                 .or_default()
-    //                 .insert((*entry).key_ref());
-    //         }
-    //
-    //         self.check_reduce();
-    //     }
-    // }
     /// 排出当前数据
     ///
     /// ```
@@ -487,7 +474,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
             return None;
         }
         unsafe {
-            for i in (0..=self.max_freq).rev() {
+            for i in (self.min_freq..=self.max_freq).rev() {
                 if let Some(val) = self.times_map.get_mut(&i) {
                     if val.is_empty() {
                         continue;
@@ -523,7 +510,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         }
 
         unsafe {
-            for i in 0..=self.max_freq {
+            for i in self.min_freq..=self.max_freq {
                 if let Some(val) = self.times_map.get_mut(&i) {
                     if val.is_empty() {
                         continue;
@@ -747,7 +734,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
 
     fn replace_or_create_node(&mut self, k: K, v: V) -> (Option<(K, V)>, NonNull<LfuEntry<K, V>>) {
         if self.len() == self.cap {
-            for i in 0..=self.max_freq {
+            for i in self.min_freq..=self.max_freq {
                 if let Some(val) = self.times_map.get_mut(&i) {
                     if val.is_empty() {
                         continue;
@@ -765,7 +752,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                         )
                     };
                     unsafe {
-                        (*node_ptr).counter = self.default_count.saturating_sub(1);
+                        (*node_ptr).counter = self.default_count;
                     }
                     return (Some(replaced), old_node);
                 }
@@ -1086,7 +1073,6 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Drain<'a, K, V, S> {
         self.base.pop_last()
     }
 }
-
 
 impl<'a, K: Hash + Eq, V, S: BuildHasher> Drop for Drain<'a, K, V, S> {
     fn drop(&mut self) {

@@ -36,9 +36,10 @@ fn build_freq_data(num: usize) -> Vec<(usize, usize)> {
     let mut data = vec![];
     for i in 0..num {
         data.push((i, i + 1));
-        data.push((i+1, i + 2));
-        for _ in 0..5 {
-            data.push((rand::random::<usize>() % (i / 2 + 1), 0));
+        // data.push((i+1, i + 2));
+        let ridx = i / 4 + 1;
+        for _ in 0..1 {
+            data.push((rand::random::<usize>() % ridx, 0));
         }
     }
     data
@@ -49,13 +50,13 @@ fn do_bench(num: usize) {
     let mut lru = LruCache::<usize, usize, RandomState>::new(num);
     let mut lruk = LruKCache::<usize, usize, RandomState>::new(num);
     let mut lfu = LfuCache::<usize, usize, RandomState>::new(num);
-    let mut arc = ArcCache::<usize, usize, RandomState>::new(num);
-    println!("名字\t插入\t读取\t");
+    let mut arc = ArcCache::<usize, usize, RandomState>::new(num / 2);
+    println!("名字\t耗时\t命中率\t");
     let order_data = build_freq_data(evict);
     do_test_bench!("LruCache", lru, num, evict, &order_data);
-    do_test_bench!("LruKCache", lruk, num, evict, &order_data);
+    // do_test_bench!("LruKCache", lruk, num, evict, &order_data);
     do_test_bench!("LfuCache", lfu, num, evict, &order_data);
-    do_test_bench!("ArcCache", arc, num, evict, &order_data);
+    // do_test_bench!("ArcCache", arc, num, evict, &order_data);
     // println!("耗时:{}", set_timer);
 }
 
