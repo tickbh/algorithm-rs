@@ -706,6 +706,37 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         }
     }
 
+
+    pub fn get_or_insert<F>(&mut self, k: K, f: F) -> &V
+    where
+        F: FnOnce() -> V, {
+        &*self.get_or_insert_mut(k, f)
+    }
+
+
+    pub fn get_or_insert_mut<F>(&mut self, k: K, f: F) -> &mut V
+    where
+        F: FnOnce() -> V, {
+        if let Some(l) = self.map.get(KeyWrapper::from_ref(&k)) {
+            let node = l.as_ptr();
+            self.detach(node);
+            self.attach(node);
+            unsafe { &mut *(*node).val.as_mut_ptr() }
+        } else {
+            let v = f();
+
+            let (_, node) = self.replace_or_create_node(k, v);
+            let node_ptr: *mut LfuEntry<K, V> = node.as_ptr();
+
+            self.attach(node_ptr);
+
+            let keyref = unsafe { (*node_ptr).key.as_ptr() };
+            self.map.insert(KeyRef { k: keyref }, node);
+            unsafe { &mut *(*node_ptr).val.as_mut_ptr() }
+        }
+    }
+
+
     /// 移除元素
     ///
     /// ```
@@ -810,6 +841,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         };
         keys.remove(&k);
         Some(k)
+    }
+}
+
+
+impl<K: Hash + Eq, V: Default, S: BuildHasher> LfuCache<K, V, S> {
+    pub fn get_or_insert_default(&mut self, k: K) -> &V {
+        &*self.get_or_insert_mut(k, || V::default())
+    }
+
+    pub fn get_or_insert_default_mut(&mut self, k: K) -> &mut V {
+        self.get_or_insert_mut(k, || V::default())
     }
 }
 
@@ -1204,6 +1246,9 @@ where
     }
 }
 
+unsafe impl<K: Send, V: Send, S: Send> Send for LfuCache<K, V, S> {}
+unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LfuCache<K, V, S> {}
+
 #[cfg(test)]
 mod tests {
     use std::collections::hash_map::RandomState;
@@ -1590,5 +1635,19 @@ mod tests {
             assert_eq!(drain.next().unwrap(), (2, 2));
         }
         assert_eq!(a.len(), 0);
+    }
+
+    #[test]
+    fn test_send() {
+        use std::thread;
+
+        let mut cache = LfuCache::new(4);
+        cache.insert(1, "a");
+
+        let handle = thread::spawn(move || {
+            assert_eq!(cache.get(&1), Some(&"a"));
+        });
+
+        assert!(handle.join().is_ok());
     }
 }

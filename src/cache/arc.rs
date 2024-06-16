@@ -441,6 +441,48 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         }
     }
 
+
+    pub fn get_or_insert<F>(&mut self, k: K, f: F) -> &V
+    where
+        F: FnOnce() -> V, {
+        &*self.get_or_insert_mut(k, f)
+    }
+
+    pub fn get_or_insert_mut<F>(&mut self, k: K, f: F) -> &mut V
+    where
+        F: FnOnce() -> V, {
+
+        if let Some((key, val)) = self.main_lru.remove(&k) {
+            self.main_lfu.insert(key, val);
+            return self.main_lfu.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
+        }
+
+        if let Some((key, val)) = self.ghost_lfu.remove(&k) {
+            self.main_lfu.full_increase();
+            self.main_lru.full_decrease();
+            self.main_lfu.insert(key, val);
+            return self.main_lfu.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
+        }
+
+        if let Some((key, val)) = self.ghost_lru.remove(&k) {
+            self.main_lru.full_increase();
+            self.main_lfu.full_decrease();
+            self.main_lru.insert(key, val);
+            return self.main_lru.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
+        }
+        
+        if self.main_lfu.contains_key(&k) {
+            return self.main_lfu.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
+        }
+        
+        if self.main_lru.is_full() {
+            let (pk, pv) = self.main_lru.pop_last().unwrap();
+            self.ghost_lru.insert(pk, pv);
+        }
+        self.get_or_insert_mut(k, f)
+    }
+
+
     /// 移除元素
     ///
     /// ```
@@ -487,6 +529,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     {
         self.main_lru.retain(|k, v| f(k, v));
         self.main_lfu.retain(|k, v| f(k, v));
+    }
+}
+
+
+impl<K: Hash + Eq, V: Default, S: BuildHasher> ArcCache<K, V, S> {
+    pub fn get_or_insert_default(&mut self, k: K) -> &V {
+        &*self.get_or_insert_mut(k, || V::default())
+    }
+
+    pub fn get_or_insert_default_mut(&mut self, k: K) -> &mut V {
+        self.get_or_insert_mut(k, || V::default())
     }
 }
 
@@ -738,6 +791,9 @@ where
         self.get_mut(index).expect("no entry found for key")
     }
 }
+
+unsafe impl<K: Send, V: Send, S: Send> Send for ArcCache<K, V, S> {}
+unsafe impl<K: Sync, V: Sync, S: Sync> Sync for ArcCache<K, V, S> {}
 
 #[cfg(test)]
 mod tests {
@@ -1111,19 +1167,18 @@ mod tests {
         assert_eq!(a[&3], "three");
     }
 
-    // #[test]
-    // fn test_drain() {
-    //     let mut a = ArcCache::new(3);
-    //     a.insert(1, 1);
-    //     a.insert(2, 2);
-    //     a.insert(3, 3);
 
-    //     assert_eq!(a.len(), 3);
-    //     {
-    //         let mut drain = a.drain();
-    //         assert_eq!(drain.next().unwrap(), (1, 1));
-    //         assert_eq!(drain.next().unwrap(), (2, 2));
-    //     }
-    //     assert_eq!(a.len(), 0);
-    // }
+    #[test]
+    fn test_send() {
+        use std::thread;
+
+        let mut cache = ArcCache::new(4);
+        cache.insert(1, "a");
+
+        let handle = thread::spawn(move || {
+            assert_eq!(cache.get(&1), Some(&"a"));
+        });
+
+        assert!(handle.join().is_ok());
+    }
 }

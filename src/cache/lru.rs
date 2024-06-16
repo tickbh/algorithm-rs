@@ -142,6 +142,10 @@ impl<K, V, S> LruCache<K, V, S> {
         self.map.len()
     }
 
+    pub fn is_full(&self) -> bool {
+        self.map.len() == self.cap
+    }
+
     pub fn is_empty(&self) -> bool {
         self.map.len() == 0
     }
@@ -537,6 +541,36 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
+
+    pub fn get_or_insert<F>(&mut self, k: K, f: F) -> &V
+    where
+        F: FnOnce() -> V, {
+        &*self.get_or_insert_mut(k, f)
+    }
+
+
+    pub fn get_or_insert_mut<F>(&mut self, k: K, f: F) -> &mut V
+    where
+        F: FnOnce() -> V, {
+        if let Some(l) = self.map.get(KeyWrapper::from_ref(&k)) {
+            let node = l.as_ptr();
+            self.detach(node);
+            self.attach(node);
+            unsafe { &mut *(*node).val.as_mut_ptr() }
+        } else {
+            let v = f();
+
+            let (_, node) = self.replace_or_create_node(k, v);
+            let node_ptr: *mut LruEntry<K, V> = node.as_ptr();
+
+            self.attach(node_ptr);
+
+            let keyref = unsafe { (*node_ptr).key.as_ptr() };
+            self.map.insert(KeyRef { k: keyref }, node);
+            unsafe { &mut *(*node_ptr).val.as_mut_ptr() }
+        }
+    }
+
     /// 移除元素
     ///
     /// ```
@@ -620,6 +654,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 }
             }
         }
+    }
+}
+
+
+impl<K: Hash + Eq, V: Default, S: BuildHasher> LruCache<K, V, S> {
+    pub fn get_or_insert_default(&mut self, k: K) -> &V {
+        &*self.get_or_insert_mut(k, || V::default())
+    }
+
+    pub fn get_or_insert_default_mut(&mut self, k: K) -> &mut V {
+        self.get_or_insert_mut(k, || V::default())
     }
 }
 
@@ -927,6 +972,10 @@ where
         self.get_mut(index).expect("no entry found for key")
     }
 }
+
+unsafe impl<K: Send, V: Send, S: Send> Send for LruCache<K, V, S> {}
+unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LruCache<K, V, S> {}
+
 
 #[cfg(test)]
 mod tests {
@@ -1305,5 +1354,20 @@ mod tests {
             assert_eq!(drain.next().unwrap(), (2, 2));
         }
         assert_eq!(a.len(), 0);
+    }
+
+
+    #[test]
+    fn test_send() {
+        use std::thread;
+
+        let mut cache = LruCache::new(4);
+        cache.insert(1, "a");
+
+        let handle = thread::spawn(move || {
+            assert_eq!(cache.get(&1), Some(&"a"));
+        });
+
+        assert!(handle.join().is_ok());
     }
 }

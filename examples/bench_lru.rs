@@ -81,5 +81,5 @@ fn do_bench(num: usize) {
 }
 
 fn main() {
-    do_bench(1e4 as usize);
+    do_bench(1e6 as usize);
 }

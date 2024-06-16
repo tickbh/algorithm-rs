@@ -698,7 +698,8 @@ impl<T: Default> Extend<T> for Slab<T> {
     }
 }
 
-
+unsafe impl<T: Send + Default> Send for Slab<T> {}
+unsafe impl<T: Sync + Default> Sync for Slab<T> {}
 
 #[cfg(test)]
 mod tests {
