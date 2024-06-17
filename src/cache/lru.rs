@@ -11,12 +11,10 @@
 // Created Date: 2024/05/24 03:04:11
 
 use std::{
-    borrow::Borrow, collections::{
-        hash_map::RandomState,
-        HashMap,
-    }, fmt::{self, Debug}, hash::{BuildHasher, Hash}, marker::PhantomData, mem, ops::{Index, IndexMut}, ptr::{self, NonNull}
+    borrow::Borrow, fmt::{self, Debug}, hash::{BuildHasher, Hash}, marker::PhantomData, mem, ops::{Index, IndexMut}, ptr::{self, NonNull}
 };
 
+use crate::{HashMap, DefaultHasher};
 use super::{KeyRef, KeyWrapper};
 
 /// Lru节点数据
@@ -82,9 +80,9 @@ pub struct LruCache<K, V, S> {
     tail: *mut LruEntry<K, V>,
 }
 
-impl<K: Hash + Eq, V> LruCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> LruCache<K, V, DefaultHasher> {
     pub fn new(cap: usize) -> Self {
-        LruCache::with_hasher(cap, RandomState::new())
+        LruCache::with_hasher(cap, DefaultHasher::default())
     }
 }
 
@@ -896,15 +894,15 @@ impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
 }
 
 
-impl<K: Hash + Eq, V> FromIterator<(K, V)> for LruCache<K, V, RandomState> {
-    fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> LruCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> FromIterator<(K, V)> for LruCache<K, V, DefaultHasher> {
+    fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> LruCache<K, V, DefaultHasher> {
         let mut lru = LruCache::new(2);
         lru.extend(iter);
         lru
     }
 }
 
-impl<K: Hash + Eq, V> Extend<(K, V)> for LruCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> Extend<(K, V)> for LruCache<K, V, DefaultHasher> {
     fn extend<T: IntoIterator<Item=(K, V)>>(&mut self, iter: T) {
         let iter = iter.into_iter();
         for (k, v) in iter {
@@ -979,7 +977,7 @@ unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LruCache<K, V, S> {}
 
 #[cfg(test)]
 mod tests {
-    use std::collections::hash_map::RandomState;
+    use crate::DefaultHasher;
 
     use super::LruCache;
 
@@ -1026,13 +1024,13 @@ mod tests {
 
     #[test]
     fn test_empty_remove() {
-        let mut m: LruCache<isize, bool, RandomState> = LruCache::new(2);
+        let mut m: LruCache<isize, bool, DefaultHasher> = LruCache::new(2);
         assert_eq!(m.remove(&0), None);
     }
 
     #[test]
     fn test_empty_iter() {
-        let mut m: LruCache<isize, bool, RandomState> = LruCache::new(2);
+        let mut m: LruCache<isize, bool, DefaultHasher> = LruCache::new(2);
         assert_eq!(m.iter().next(), None);
         assert_eq!(m.iter_mut().next(), None);
         assert_eq!(m.len(), 0);

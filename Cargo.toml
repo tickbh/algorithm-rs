@@ -12,6 +12,7 @@ keywords = ["algorithm", "lru", "lfu", "timerwheel", "slab"]
 
 [dependencies]
 lazy_static="1.4.0"
+hashbrown="0.14"
 
 [dev-dependencies]
 rand="0.8.5"
@@ -21,3 +22,6 @@ slab = "0.4.9"
 [profile.release]
 opt-level = 3
 debug = true
+
+[features]
+hashbrown=[]

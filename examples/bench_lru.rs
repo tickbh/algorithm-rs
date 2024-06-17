@@ -1,4 +1,3 @@
-use std::collections::hash_map::RandomState;
 use std::time::Instant;
 use algorithm::{ArcCache, LfuCache, LruCache, LruKCache};
 
@@ -65,10 +64,10 @@ fn build_high_freq_data(num: usize) -> Vec<(usize, usize)> {
 
 fn do_bench(num: usize) {
     let evict = num * 2;
-    let mut lru = LruCache::<usize, usize, RandomState>::new(num);
-    let mut lruk = LruKCache::<usize, usize, RandomState>::new(num);
-    let mut lfu = LfuCache::<usize, usize, RandomState>::new(num);
-    let mut arc = ArcCache::<usize, usize, RandomState>::new(num / 2);
+    let mut lru = LruCache::new(num);
+    let mut lruk = LruKCache::new(num);
+    let mut lfu = LfuCache::new(num);
+    let mut arc = ArcCache::new(num / 2);
     println!("|名字|耗时|命中率|");
     println!("|---|---|---|");
     // let data = build_freq_data(evict);
@@ -81,5 +80,5 @@ fn do_bench(num: usize) {
 }
 
 fn main() {
-    do_bench(1e6 as usize);
+    do_bench(1e5 as usize);
 }

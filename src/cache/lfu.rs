@@ -14,13 +14,13 @@ use std::fmt::Debug;
 use std::ops::{Index, IndexMut};
 use std::{
     borrow::Borrow,
-    collections::{hash_map::RandomState, HashMap, HashSet},
     fmt,
     hash::{BuildHasher, Hash},
     mem,
     ptr::NonNull,
 };
 
+use crate::{HashMap, HashSet, DefaultHasher};
 use lazy_static::lazy_static;
 
 use super::{KeyRef, KeyWrapper};
@@ -128,9 +128,9 @@ pub struct LfuCache<K, V, S> {
     reduce_count: usize,
 }
 
-impl<K: Hash + Eq, V> LfuCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> LfuCache<K, V, DefaultHasher> {
     pub fn new(cap: usize) -> Self {
-        LfuCache::with_hasher(cap, RandomState::new())
+        LfuCache::with_hasher(cap, DefaultHasher::default())
     }
 }
 
@@ -1169,15 +1169,15 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for ValuesMut<'a, K, V, S> {
     }
 }
 
-impl<K: Hash + Eq, V> FromIterator<(K, V)> for LfuCache<K, V, RandomState> {
-    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> LfuCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> FromIterator<(K, V)> for LfuCache<K, V, DefaultHasher> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> LfuCache<K, V, DefaultHasher> {
         let mut lru = LfuCache::new(2);
         lru.extend(iter);
         lru
     }
 }
 
-impl<K: Hash + Eq, V> Extend<(K, V)> for LfuCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> Extend<(K, V)> for LfuCache<K, V, DefaultHasher> {
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         let iter = iter.into_iter();
         for (k, v) in iter {
@@ -1251,8 +1251,7 @@ unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LfuCache<K, V, S> {}
 
 #[cfg(test)]
 mod tests {
-    use std::collections::hash_map::RandomState;
-
+    use crate::DefaultHasher;
     use super::LfuCache;
 
     #[test]
@@ -1299,13 +1298,13 @@ mod tests {
 
     #[test]
     fn test_empty_remove() {
-        let mut m: LfuCache<isize, bool, RandomState> = LfuCache::new(2);
+        let mut m: LfuCache<isize, bool, DefaultHasher> = LfuCache::new(2);
         assert_eq!(m.remove(&0), None);
     }
 
     #[test]
     fn test_empty_iter() {
-        let mut m: LfuCache<isize, bool, RandomState> = LfuCache::new(2);
+        let mut m: LfuCache<isize, bool, DefaultHasher> = LfuCache::new(2);
         assert_eq!(m.iter().next(), None);
         assert_eq!(m.iter_mut().next(), None);
         assert_eq!(m.len(), 0);

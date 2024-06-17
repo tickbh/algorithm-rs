@@ -12,12 +12,12 @@
 
 use std::{
     borrow::Borrow,
-    collections::hash_map::RandomState,
     fmt::{self, Debug},
     hash::{BuildHasher, Hash},
     ops::{Index, IndexMut},
 };
 
+use crate::DefaultHasher;
 use crate::{LfuCache, LruCache};
 
 use super::{lfu, lru};
@@ -53,10 +53,10 @@ pub struct ArcCache<K, V, S> {
     cap: usize,
 }
 
-impl<K: Hash + Eq, V> ArcCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> ArcCache<K, V, DefaultHasher> {
     /// 因为存在四个数组, 所以实际的容量为这个的4倍
     pub fn new(cap: usize) -> Self {
-        ArcCache::with_hasher(cap, RandomState::new())
+        ArcCache::with_hasher(cap, DefaultHasher::default())
     }
 }
 
@@ -715,15 +715,15 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for ValuesMut<'a, K, V, S> {
     }
 }
 
-impl<K: Hash + Eq, V> FromIterator<(K, V)> for ArcCache<K, V, RandomState> {
-    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> ArcCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> FromIterator<(K, V)> for ArcCache<K, V, DefaultHasher> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> ArcCache<K, V, DefaultHasher> {
         let mut arc = ArcCache::new(2);
         arc.extend(iter);
         arc
     }
 }
 
-impl<K: Hash + Eq, V> Extend<(K, V)> for ArcCache<K, V, RandomState> {
+impl<K: Hash + Eq, V> Extend<(K, V)> for ArcCache<K, V, DefaultHasher> {
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         let iter = iter.into_iter();
         for (k, v) in iter {
@@ -797,8 +797,7 @@ unsafe impl<K: Sync, V: Sync, S: Sync> Sync for ArcCache<K, V, S> {}
 
 #[cfg(test)]
 mod tests {
-    use std::collections::hash_map::RandomState;
-
+    use crate::DefaultHasher;
     use super::ArcCache;
 
     #[test]
@@ -853,13 +852,13 @@ mod tests {
 
     #[test]
     fn test_empty_remove() {
-        let mut m: ArcCache<isize, bool, RandomState> = ArcCache::new(2);
+        let mut m: ArcCache<isize, bool, DefaultHasher> = ArcCache::new(2);
         assert_eq!(m.remove(&0), None);
     }
 
     #[test]
     fn test_empty_iter() {
-        let mut m: ArcCache<isize, bool, RandomState> = ArcCache::new(2);
+        let mut m: ArcCache<isize, bool, DefaultHasher> = ArcCache::new(2);
         assert_eq!(m.iter().next(), None);
         assert_eq!(m.iter_mut().next(), None);
         assert_eq!(m.len(), 0);
