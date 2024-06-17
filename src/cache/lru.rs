@@ -80,6 +80,12 @@ pub struct LruCache<K, V, S> {
     tail: *mut LruEntry<K, V>,
 }
 
+impl<K: Hash + Eq, V> Default for LruCache<K, V, DefaultHasher> {
+    fn default() -> Self {
+        LruCache::new(100 )
+    }
+}
+
 impl<K: Hash + Eq, V> LruCache<K, V, DefaultHasher> {
     pub fn new(cap: usize) -> Self {
         LruCache::with_hasher(cap, DefaultHasher::default())
@@ -167,8 +173,9 @@ impl<K, V, S> LruCache<K, V, S> {
     }
 
     /// 扩展当前容量
-    pub fn reserve(&mut self, additional: usize) {
+    pub fn reserve(&mut self, additional: usize) -> &mut Self {
         self.cap += additional;
+        self
     }
 
     /// 遍历当前的所有值

@@ -53,6 +53,12 @@ pub struct ArcCache<K, V, S> {
     cap: usize,
 }
 
+impl<K: Hash + Eq, V> Default for ArcCache<K, V, DefaultHasher> {
+    fn default() -> Self {
+        ArcCache::new(100 )
+    }
+}
+
 impl<K: Hash + Eq, V> ArcCache<K, V, DefaultHasher> {
     /// 因为存在四个数组, 所以实际的容量为这个的4倍
     pub fn new(cap: usize) -> Self {

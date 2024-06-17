@@ -88,6 +88,12 @@ pub struct LruKCache<K, V, S> {
     lru_count: usize,
 }
 
+impl<K: Hash + Eq, V> Default for LruKCache<K, V, DefaultHasher> {
+    fn default() -> Self {
+        LruKCache::new(100 )
+    }
+}
+
 impl<K: Hash + Eq, V> LruKCache<K, V, DefaultHasher> {
     pub fn new(cap: usize) -> Self {
         LruKCache::with_hasher(cap, DEFAULT_TIMESK, DefaultHasher::default())

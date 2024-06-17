@@ -20,7 +20,7 @@ use std::{
     ptr::NonNull,
 };
 
-use crate::{HashMap, HashSet, DefaultHasher};
+use crate::{DefaultHasher, HashMap, LruCache};
 use lazy_static::lazy_static;
 
 use super::{KeyRef, KeyWrapper};
@@ -118,7 +118,7 @@ impl<K, V> LfuEntry<K, V> {
 /// ```
 pub struct LfuCache<K, V, S> {
     map: HashMap<KeyRef<K>, NonNull<LfuEntry<K, V>>, S>,
-    times_map: HashMap<u8, HashSet<KeyRef<K>>>,
+    times_map: HashMap<u8, LruCache<KeyRef<K>, (), DefaultHasher>>,
     cap: usize,
     max_freq: u8,
     min_freq: u8,
@@ -402,7 +402,8 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
             self.times_map
                 .entry(freq)
                 .or_default()
-                .insert((*entry).key_ref());
+                .reserve(1)
+                .insert((*entry).key_ref(), ());
 
             self.check_reduce();
         }
@@ -427,7 +428,8 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                         self.times_map
                             .entry(next)
                             .or_default()
-                            .insert((*node).key_ref());
+                            .reserve(1)
+                            .insert((*node).key_ref(), ());
                     }
                 }
             }
@@ -833,14 +835,15 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         }
     }
 
-    fn _pop_one(keys: &mut HashSet<KeyRef<K>>) -> Option<KeyRef<K>> {
-        let k = if let Some(k) = keys.iter().next() {
-            KeyRef { k: k.k }
-        } else {
-            return None;
-        };
-        keys.remove(&k);
-        Some(k)
+    fn _pop_one(keys: &mut LruCache<KeyRef<K>, (), DefaultHasher>) -> Option<KeyRef<K>> {
+        keys.pop().map(|(k, _)| k)
+        // let k = if let Some(k) = keys.iter().next() {
+        //     KeyRef { k: k.k }
+        // } else {
+        //     return None;
+        // };
+        // keys.remove(&k);
+        // Some(k)
     }
 }
 
@@ -941,7 +944,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Iter<'a, K, V, S> {
                 if let Some(s) = self.base.times_map.get(&i) {
                     if s.len() != 0 {
                         self.now_freq = i.saturating_sub(1);
-                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.k }).collect());
+                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.0.k }).collect());
                         break;
                     }
                 }
@@ -980,7 +983,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for Iter<'a, K, V,
                 if let Some(s) = self.base.times_map.get(&i) {
                     if s.len() != 0 {
                         self.now_freq = i.saturating_sub(1);
-                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.k }).collect());
+                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.0.k }).collect());
                         break;
                     }
                 }
@@ -1035,7 +1038,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for IterMut<'a, K, V, S> {
                 if let Some(s) = self.base.times_map.get(&i) {
                     if s.len() != 0 {
                         self.now_freq = i.saturating_sub(1);
-                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.k }).collect());
+                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.0.k }).collect());
                         break;
                     }
                 }
@@ -1074,7 +1077,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for IterMut<'a, K,
                 if let Some(s) = self.base.times_map.get(&i) {
                     if s.len() != 0 {
                         self.now_freq = i.saturating_sub(1);
-                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.k }).collect());
+                        self.now_keys = Some(s.iter().map(|s| KeyRef { k: s.0.k }).collect());
                         break;
                     }
                 }
