@@ -122,12 +122,13 @@ impl<K, V, S> ArcCache<K, V, S> {
     }
 
     /// 扩展当前容量
-    pub fn reserve(&mut self, additional: usize) {
+    pub fn reserve(&mut self, additional: usize) -> &mut Self {
         self.cap += additional;
         self.main_lfu.reserve(additional);
         self.main_lru.reserve(additional);
         self.ghost_lfu.reserve(additional);
         self.ghost_lru.reserve(additional);
+        self
     }
 
     /// 遍历当前的所有值

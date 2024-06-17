@@ -208,8 +208,9 @@ impl<K, V, S> LruKCache<K, V, S> {
     }
 
     /// 扩展当前容量
-    pub fn reserve(&mut self, additional: usize) {
+    pub fn reserve(&mut self, additional: usize) -> &mut Self {
         self.cap += additional;
+        self
     }
 
     /// 遍历当前的所有值
