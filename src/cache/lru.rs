@@ -299,7 +299,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     
     pub fn full_decrease(&mut self) -> Option<(K, V)> {
         if self.cap == self.len() {
-            let ret = self.pop_last();
+            let ret = self.pop_unusual();
             self.cap = self.cap.saturating_sub(1);
             ret
         } else {
@@ -326,7 +326,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     }
 
 
-    /// 弹出栈顶上的数据, 最近使用的数据
+    /// 弹出栈顶上的数据, 最常使用的数据
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -334,11 +334,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     ///     let mut lru = LruCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
-    ///     assert!(lru.pop()==Some(("this", "lru")));
+    ///     assert!(lru.pop_usual()==Some(("this", "lru")));
     ///     assert!(lru.len() == 1);
     /// }
     /// ```
-    pub fn pop(&mut self) -> Option<(K, V)> {
+    pub fn pop_usual(&mut self) -> Option<(K, V)> {
         if self.len() == 0 {
             return None;
         }
@@ -353,7 +353,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    /// 弹出栈尾上的数据, 最久未使用的数据
+    /// 弹出栈尾上的数据, 最不常使用的数据
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -361,11 +361,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     ///     let mut lru = LruCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
-    ///     assert!(lru.pop_last()==Some(("hello", "algorithm")));
+    ///     assert!(lru.pop_unusual()==Some(("hello", "algorithm")));
     ///     assert!(lru.len() == 1);
     /// }
     /// ```
-    pub fn pop_last(&mut self) -> Option<(K, V)> {
+    pub fn pop_unusual(&mut self) -> Option<(K, V)> {
         if self.len() == 0 {
             return None;
         }
@@ -377,6 +377,51 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             let node = *Box::from_raw(value.as_ptr());
             let LruEntry { key, val, .. } = node;
             Some((key.assume_init(), val.assume_init()))
+        }
+    }
+
+    
+    /// 取出栈顶上的数据, 最常使用的数据
+    ///
+    /// ```
+    /// use algorithm::LruCache;
+    /// fn main() {
+    ///     let mut lru = LruCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     assert!(lru.peek_usual()==Some((&"this", &"lru")));
+    ///     assert!(lru.len() == 2);
+    /// }
+    /// ```
+    pub fn peek_usual(&mut self) -> Option<(&K, &V)> {
+        if self.len() == 0 {
+            return None;
+        }
+        unsafe {
+            let node = (*self.head).next;
+            Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
+        }
+    }
+
+    /// 取出栈尾上的数据, 最不常使用的数据
+    ///
+    /// ```
+    /// use algorithm::LruCache;
+    /// fn main() {
+    ///     let mut lru = LruCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     assert!(lru.peek_unusual()==Some((&"hello", &"algorithm")));
+    ///     assert!(lru.len() == 2);
+    /// }
+    /// ```
+    pub fn peek_unusual(&mut self) -> Option<(&K, &V)> {
+        if self.len() == 0 {
+            return None;
+        }
+        unsafe {
+            let node = (*self.tail).prev;
+            Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr()))
         }
     }
 
@@ -712,7 +757,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<(K, V)> {
-        self.base.pop()
+        self.base.pop_usual()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -777,7 +822,7 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
 impl<K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for IntoIter<K, V, S> {
     #[inline]
     fn next_back(&mut self) -> Option<(K, V)> {
-        self.base.pop_last()
+        self.base.pop_unusual()
     }
 }
 
@@ -840,7 +885,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Drain<'a, K, V, S> {
         if self.base.len() == 0 {
             return None;
         }
-        self.base.pop_last()
+        self.base.pop_unusual()
     }
 }
 
@@ -1155,9 +1200,9 @@ mod tests {
         m.insert(2, 4);
         m.insert(1, 2);
         assert_eq!(m.len(), 3);
-        assert_eq!(m.pop(), Some((1, 2)));
+        assert_eq!(m.pop_usual(), Some((1, 2)));
         assert_eq!(m.len(), 2);
-        assert_eq!(m.pop_last(), Some((3, 6)));
+        assert_eq!(m.pop_unusual(), Some((3, 6)));
         assert_eq!(m.len(), 1);
     }
 

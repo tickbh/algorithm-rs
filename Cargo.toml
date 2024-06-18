@@ -1,12 +1,12 @@
 [package]
 name = "algorithm"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
 description = "about algorithm data structure, now has lru/lru-k/lfu/slab/rbtree/roaring_bitmap/timer_wheelss, 关于算法常用的数据结构"
 repository = "https://github.com/tickbh/algorithm-rs"
 license = "Apache-2.0"
-keywords = ["algorithm", "lru", "lfu", "timerwheel", "slab"]
+keywords = ["arc", "lru", "lfu", "timerwheel", "slab"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

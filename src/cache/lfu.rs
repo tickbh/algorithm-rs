@@ -118,6 +118,7 @@ impl<K, V> LfuEntry<K, V> {
 /// ```
 pub struct LfuCache<K, V, S> {
     map: HashMap<KeyRef<K>, NonNull<LfuEntry<K, V>>, S>,
+    /// 因为HashSet的pop耗时太长, 所以取LruCache暂时做为平替
     times_map: HashMap<u8, LruCache<KeyRef<K>, (), DefaultHasher>>,
     cap: usize,
     max_freq: u8,
@@ -362,7 +363,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
 
     pub fn full_decrease(&mut self) -> Option<(K, V)> {
         if self.cap == self.len() {
-            let ret = self.pop_last();
+            let ret = self.pop_unusual();
             self.cap = self.cap.saturating_sub(1);
             ret
         } else {
@@ -460,7 +461,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         Drain { base: self }
     }
 
-    /// 弹出栈顶上的数据, 最近使用的数据
+    /// 弹出栈顶上的数据, 最常使用的数据
     ///
     /// ```
     /// use algorithm::LfuCache;
@@ -469,11 +470,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     let _ = lru.get("this");
-    ///     assert!(lru.pop()==Some(("this", "lru")));
+    ///     assert!(lru.pop_usual()==Some(("this", "lru")));
     ///     assert!(lru.len() == 1);
     /// }
     /// ```
-    pub fn pop(&mut self) -> Option<(K, V)> {
+    pub fn pop_usual(&mut self) -> Option<(K, V)> {
         if self.len() == 0 {
             return None;
         }
@@ -488,14 +489,13 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     let node = *Box::from_raw(value.as_ptr());
                     let LfuEntry { key, val, .. } = node;
                     return Some((key.assume_init(), val.assume_init()));
-                    // val.take(value)
                 }
             }
             None
         }
     }
 
-    /// 弹出栈尾上的数据, 最久未使用的数据
+    /// 弹出栈尾上的数据, 最不常使用的数据
     ///
     /// ```
     /// use algorithm::LfuCache;
@@ -504,11 +504,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     let _ = lru.get("this");
-    ///     assert!(lru.pop_last()==Some(("hello", "algorithm")));
+    ///     assert!(lru.pop_unusual()==Some(("hello", "algorithm")));
     ///     assert!(lru.len() == 1);
     /// }
     /// ```
-    pub fn pop_last(&mut self) -> Option<(K, V)> {
+    pub fn pop_unusual(&mut self) -> Option<(K, V)> {
         if self.len() == 0 {
             return None;
         }
@@ -531,6 +531,70 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         }
     }
 
+    /// 取出栈顶上的数据, 最常使用的数据
+    ///
+    /// ```
+    /// use algorithm::LfuCache;
+    /// fn main() {
+    ///     let mut lru = LfuCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     let _ = lru.get("this");
+    ///     assert!(lru.peek_usual()==Some((&"this", &"lru")));
+    ///     assert!(lru.len() == 2);
+    /// }
+    /// ```
+    pub fn peek_usual(&mut self) -> Option<(&K, &V)> {
+        if self.len() == 0 {
+            return None;
+        }
+        unsafe {
+            for i in (self.min_freq..=self.max_freq).rev() {
+                if let Some(val) = self.times_map.get_mut(&i) {
+                    if val.is_empty() {
+                        continue;
+                    }
+                    let key = val.peek_usual().unwrap().0;
+                    let val = self.map.get(key).unwrap().as_ptr();
+                    return Some((&*(*val).key.as_ptr(), &*(*val).val.as_ptr()));
+                }
+            }
+            None
+        }
+    }
+
+    /// 取出栈尾上的数据, 最不常使用的数据
+    ///
+    /// ```
+    /// use algorithm::LfuCache;
+    /// fn main() {
+    ///     let mut lru = LfuCache::new(3);
+    ///     lru.insert("hello", "algorithm");
+    ///     lru.insert("this", "lru");
+    ///     let _ = lru.get("this");
+    ///     assert!(lru.peek_unusual()==Some((&"hello", &"algorithm")));
+    ///     assert!(lru.len() == 2);
+    /// }
+    /// ```
+    pub fn peek_unusual(&mut self) -> Option<(&K, &V)> {
+        if self.len() == 0 {
+            return None;
+        }
+
+        unsafe {
+            for i in self.min_freq..=self.max_freq {
+                if let Some(val) = self.times_map.get_mut(&i) {
+                    if val.is_empty() {
+                        continue;
+                    }
+                    let key = val.peek_usual().unwrap().0;
+                    let val = self.map.get(key).unwrap().as_ptr();
+                    return Some((&*(*val).key.as_ptr(), &*(*val).val.as_ptr()));
+                }
+            }
+            None
+        }
+    }
     pub fn contains_key<Q>(&mut self, k: &Q) -> bool
     where
         K: Borrow<Q>,
@@ -837,7 +901,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     }
 
     fn _pop_one(keys: &mut LruCache<KeyRef<K>, (), DefaultHasher>) -> Option<KeyRef<K>> {
-        keys.pop().map(|(k, _)| k)
+        keys.pop_usual().map(|(k, _)| k)
         // let k = if let Some(k) = keys.iter().next() {
         //     KeyRef { k: k.k }
         // } else {
@@ -894,7 +958,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<(K, V)> {
-        self.base.pop()
+        self.base.pop_usual()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1117,7 +1181,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Drain<'a, K, V, S> {
         if self.base.len() == 0 {
             return None;
         }
-        self.base.pop_last()
+        self.base.pop_unusual()
     }
 }
 
@@ -1430,9 +1494,9 @@ mod tests {
         let _ = m.get(&2);
         m.insert(1, 2);
         assert_eq!(m.len(), 3);
-        assert_eq!(m.pop_last(), Some((1, 2)));
+        assert_eq!(m.pop_unusual(), Some((1, 2)));
         assert_eq!(m.len(), 2);
-        assert_eq!(m.pop_last(), Some((3, 6)));
+        assert_eq!(m.pop_unusual(), Some((3, 6)));
         assert_eq!(m.len(), 1);
     }
 

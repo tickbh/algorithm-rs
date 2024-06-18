@@ -264,7 +264,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     //     Drain { base: self }
     // }
 
-    /// 弹出栈顶上的数据, 最近使用的数据
+    /// 弹出栈顶上的数据, 最常使用的数据
     ///
     /// ```
     /// use algorithm::ArcCache;
@@ -272,18 +272,18 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     ///     let mut arc = ArcCache::new(3);
     ///     arc.insert("hello", "algorithm");
     ///     arc.insert("this", "arc");
-    ///     assert!(arc.pop()==Some(("this", "arc")));
+    ///     assert!(arc.pop_usual()==Some(("this", "arc")));
     ///     assert!(arc.len() == 1);
     /// }
     /// ```
-    pub fn pop(&mut self) -> Option<(K, V)> {
+    pub fn pop_usual(&mut self) -> Option<(K, V)> {
         if self.main_lru.len() != 0 {
-            return self.main_lru.pop();
+            return self.main_lru.pop_usual();
         }
-        self.main_lfu.pop()
+        self.main_lfu.pop_usual()
     }
 
-    /// 弹出栈尾上的数据, 最久未使用的数据
+    /// 弹出栈尾上的数据, 最不常使用的数据
     ///
     /// ```
     /// use algorithm::ArcCache;
@@ -291,15 +291,53 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     ///     let mut arc = ArcCache::new(3);
     ///     arc.insert("hello", "algorithm");
     ///     arc.insert("this", "arc");
-    ///     assert!(arc.pop_last()==Some(("hello", "algorithm")));
+    ///     assert!(arc.pop_unusual()==Some(("hello", "algorithm")));
     ///     assert!(arc.len() == 1);
     /// }
     /// ```
-    pub fn pop_last(&mut self) -> Option<(K, V)> {
+    pub fn pop_unusual(&mut self) -> Option<(K, V)> {
         if self.main_lru.len() != 0 {
-            return self.main_lru.pop_last();
+            return self.main_lru.pop_unusual();
         }
-        self.main_lfu.pop_last()
+        self.main_lfu.pop_unusual()
+    }
+
+    /// 取出栈顶上的数据, 最常使用的数据
+    ///
+    /// ```
+    /// use algorithm::ArcCache;
+    /// fn main() {
+    ///     let mut arc = ArcCache::new(3);
+    ///     arc.insert("hello", "algorithm");
+    ///     arc.insert("this", "arc");
+    ///     assert!(arc.peek_usual()==Some((&"this", &"arc")));
+    ///     assert!(arc.len() == 2);
+    /// }
+    /// ```
+    pub fn peek_usual(&mut self) -> Option<(&K, &V)> {
+        if self.main_lru.len() != 0 {
+            return self.main_lru.peek_usual();
+        }
+        self.main_lfu.peek_usual()
+    }
+
+    /// 取出栈尾上的数据, 最不常使用的数据
+    ///
+    /// ```
+    /// use algorithm::ArcCache;
+    /// fn main() {
+    ///     let mut arc = ArcCache::new(3);
+    ///     arc.insert("hello", "algorithm");
+    ///     arc.insert("this", "arc");
+    ///     assert!(arc.peek_last()==Some((&"hello", &"algorithm")));
+    ///     assert!(arc.len() == 2);
+    /// }
+    /// ```
+    pub fn peek_last(&mut self) -> Option<(&K, &V)> {
+        if self.main_lru.len() != 0 {
+            return self.main_lru.peek_unusual();
+        }
+        self.main_lfu.peek_unusual()
     }
 
     pub fn contains_key<Q>(&mut self, k: &Q) -> bool
@@ -483,7 +521,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         }
         
         if self.main_lru.is_full() {
-            let (pk, pv) = self.main_lru.pop_last().unwrap();
+            let (pk, pv) = self.main_lru.pop_unusual().unwrap();
             self.ghost_lru.insert(pk, pv);
         }
         self.get_or_insert_mut(k, f)
@@ -585,7 +623,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> Iterator for IntoIter<K, V, S> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<(K, V)> {
-        self.base.pop()
+        self.base.pop_usual()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -638,7 +676,7 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for Iter<'a, K, V,
 impl<K: Hash + Eq, V, S: BuildHasher> DoubleEndedIterator for IntoIter<K, V, S> {
     #[inline]
     fn next_back(&mut self) -> Option<(K, V)> {
-        self.base.pop_last()
+        self.base.pop_unusual()
     }
 }
 
@@ -983,9 +1021,9 @@ mod tests {
         m.insert(2, 4);
         m.insert(1, 2);
         assert_eq!(m.len(), 3);
-        assert_eq!(m.pop(), Some((1, 2)));
+        assert_eq!(m.pop_usual(), Some((1, 2)));
         assert_eq!(m.len(), 2);
-        assert_eq!(m.pop_last(), Some((3, 6)));
+        assert_eq!(m.pop_unusual(), Some((3, 6)));
         assert_eq!(m.len(), 1);
     }
 
