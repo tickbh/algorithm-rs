@@ -283,7 +283,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.main_lfu.pop_usual()
     }
 
-    /// 弹出栈尾上的数据, 最不常使用的数据
+    /// 弹出栈尾上的数据, 最久未使用的数据
     ///
     /// ```
     /// use algorithm::ArcCache;
@@ -302,7 +302,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.main_lfu.pop_unusual()
     }
 
-    /// 取出栈顶上的数据, 最常使用的数据
+    /// 取出栈顶上的数据, 最近使用的数据
     ///
     /// ```
     /// use algorithm::ArcCache;
@@ -321,7 +321,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.main_lfu.peek_usual()
     }
 
-    /// 取出栈尾上的数据, 最不常使用的数据
+    /// 取出栈尾上的数据, 最久未使用的数据
     ///
     /// ```
     /// use algorithm::ArcCache;

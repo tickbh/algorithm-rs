@@ -353,7 +353,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    /// 弹出栈尾上的数据, 最不常使用的数据
+    /// 弹出栈尾上的数据, 最久未使用的数据
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -381,7 +381,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     }
 
     
-    /// 取出栈顶上的数据, 最常使用的数据
+    /// 取出栈顶上的数据, 最近使用的数据
     ///
     /// ```
     /// use algorithm::LruCache;
@@ -403,7 +403,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    /// 取出栈尾上的数据, 最不常使用的数据
+    /// 取出栈尾上的数据, 最久未使用的数据
     ///
     /// ```
     /// use algorithm::LruCache;

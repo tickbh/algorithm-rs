@@ -11,7 +11,7 @@ pub use cache::{LruCache, LruKCache, LfuCache, ArcCache, Slab, Reinit};
 pub use tree::RBTree;
 pub use map::{BitMap, RoaringBitMap};
 pub use timer::{TimerWheel, Timer};
-pub use arr::CircularBuffer;
+pub use arr::{CircularBuffer, FixedVec};
 
 #[cfg(feature = "hashbrown")]
 extern crate hashbrown;
