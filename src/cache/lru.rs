@@ -17,14 +17,21 @@ use std::{
 use crate::{HashMap, DefaultHasher};
 use super::{KeyRef, KeyWrapper};
 
+#[cfg(feature = "ttl")]
+use crate::{get_timestamp};
+#[cfg(feature = "ttl")]
+const DEFAULT_CHECK_STEP: u64 = 120;
 /// Lru节点数据
-struct LruEntry<K, V> {
+pub(crate) struct LruEntry<K, V> {
     /// 头部节点及尾部结点均未初始化值
     pub key: mem::MaybeUninit<K>,
     /// 头部节点及尾部结点均未初始化值
     pub val: mem::MaybeUninit<V>,
     pub prev: *mut LruEntry<K, V>,
     pub next: *mut LruEntry<K, V>,
+
+    #[cfg(feature = "ttl")]
+    pub expire: u64,
 }
 
 impl<K, V> LruEntry<K, V> {
@@ -34,6 +41,8 @@ impl<K, V> LruEntry<K, V> {
             val: mem::MaybeUninit::uninit(),
             prev: ptr::null_mut(),
             next: ptr::null_mut(),
+            #[cfg(feature = "ttl")]
+            expire: u64::MAX,
         }
     }
 
@@ -43,7 +52,35 @@ impl<K, V> LruEntry<K, V> {
             val: mem::MaybeUninit::new(v),
             prev: ptr::null_mut(),
             next: ptr::null_mut(),
+            #[cfg(feature = "ttl")]
+            expire: u64::MAX,
         }
+    }
+
+    #[cfg(feature = "ttl")]
+    #[allow(dead_code)]
+    pub fn new_expire(k: K, v: V, expire: u64) -> Self {
+        LruEntry {
+            key: mem::MaybeUninit::new(k),
+            val: mem::MaybeUninit::new(v),
+            prev: ptr::null_mut(),
+            next: ptr::null_mut(),
+            expire,
+        }
+    }
+
+
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn is_expire(&self) -> bool {
+        get_timestamp() >= self.expire
+    }
+
+
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn is_little(&self, time: &u64) -> bool {
+        time >= &self.expire
     }
 }
 
@@ -78,6 +115,12 @@ pub struct LruCache<K, V, S> {
     head: *mut LruEntry<K, V>,
     /// 双向列表的尾
     tail: *mut LruEntry<K, V>,
+
+    #[cfg(feature = "ttl")]
+    check_next: u64,
+
+    #[cfg(feature = "ttl")]
+    check_step: u64,
 }
 
 impl<K: Hash + Eq, V> Default for LruCache<K, V, DefaultHasher> {
@@ -108,7 +151,26 @@ impl<K, V, S> LruCache<K, V, S> {
             cap,
             head,
             tail,
+            #[cfg(feature = "ttl")]
+            check_step: DEFAULT_CHECK_STEP,
+            #[cfg(feature = "ttl")]
+            check_next: get_timestamp()+DEFAULT_CHECK_STEP,
         }
+    }
+
+    /// 获取当前检查lru的间隔
+    pub fn get_check_step(&self) -> u64 {
+        self.check_step
+    }
+
+    /// 设置当前检查lru的间隔
+    /// 单位为秒，意思就是每隔多少秒会清理一次数据
+    /// 如果数据太大的话遍历一次可能会比较久的时长
+    /// 一次清理时间复杂度O(n)
+    /// 仅仅在插入时触发检查，获取时仅检查当前元素
+    pub fn set_check_step(&mut self, check_step: u64) {
+        self.check_step = check_step;
+        self.check_next = get_timestamp() + self.check_step;
     }
 
     /// 获取当前容量
@@ -211,7 +273,7 @@ impl<K, V, S> LruCache<K, V, S> {
     ///     }
     ///     assert!(lru.len() == 2);
     ///     assert!(lru.get(&"this") == Some(&"lru ok".to_string()));
-    /// assert!(lru.get(&"hello") == Some(&"algorithm ok".to_string()));
+    ///     assert!(lru.get(&"hello") == Some(&"algorithm ok".to_string()));
     /// }
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
@@ -494,15 +556,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             K: Borrow<Q>,
             Q: Hash + Eq + ?Sized,
     {
-        match self.map.get(KeyWrapper::from_ref(k)) {
-            Some(l) => {
-                let node = l.as_ptr();
-                self.detach(node);
-                self.attach(node);
-                unsafe { Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr())) }
-            }
-            None => None,
-        }
+        self.get_mut_key_value(k).map(|(k, v)| (k, &*v))
     }
 
     /// 获取key值相对应的value值, 根据hash判定, 可编辑被改变
@@ -522,16 +576,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             K: Borrow<Q>,
             Q: Hash + Eq + ?Sized,
     {
-        match self.map.get(KeyWrapper::from_ref(k)) {
-            Some(l) => {
-                let node = l.as_ptr();
-
-                self.detach(node);
-                self.attach(node);
-                unsafe { Some(&mut *(*node).val.as_mut_ptr()) }
-            }
-            None => None,
-        }
+        self.get_mut_key_value(k).map(|(_, v)| v)
     }
 
     
@@ -540,12 +585,34 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             K: Borrow<Q>,
             Q: Hash + Eq + ?Sized,
     {
+        match self.get_node(k) {
+            Some(node) => {
+                unsafe { Some(( &*(*node).key.as_mut_ptr(), &mut *(*node).val.as_mut_ptr())) }
+            }
+            None => None,
+        }
+    }
+
+    pub(crate) fn get_node<Q>(&mut self, k: &Q) -> Option<*mut LruEntry<K, V>>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
                 let node = l.as_ptr();
                 self.detach(node);
+                #[cfg(feature = "ttl")]
+                unsafe {
+                    if (*node).is_expire() {
+                        self.map.remove(KeyWrapper::from_ref(k));
+                        let _ = *Box::from_raw(node);
+                        return None;
+                    }
+                }
+                
                 self.attach(node);
-                unsafe { Some(( &*(*node).key.as_mut_ptr(), &mut *(*node).val.as_mut_ptr())) }
+                Some(node)
             }
             None => None,
         }
@@ -561,17 +628,45 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     ///     assert!(lru.insert("this", "lru good") == Some(&"lru"));
     /// }
     /// ```
+    #[inline(always)]
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.capture_insert(k, v).map(|(_, v, _)| v)
     }
 
-    pub fn capture_insert(&mut self, k: K, mut v: V) -> Option<(K, V, bool)> {
+    /// 插入带有生存时间的元素
+    /// 每次获取像redis一样，并不会更新生存时间
+    /// 如果需要更新则需要手动的进行重新设置
+    #[inline(always)]
+    pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
+        self._capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
+    }
+
+    #[inline(always)]
+    pub fn capture_insert(&mut self, k: K, v: V) -> Option<(K, V, bool)> {
+        self._capture_insert_with_ttl(k, v, u64::MAX)
+    }
+
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn capture_insert_with_ttl(&mut self, k: K, v: V) -> Option<(K, V, bool)> {
+        self._capture_insert_with_ttl(k, v, u64::MAX)
+    }
+
+    #[allow(unused_variables)]
+    fn _capture_insert_with_ttl(&mut self, k: K, mut v: V, ttl: u64) -> Option<(K, V, bool)> {
+        #[cfg(feature="ttl")]
+        self.clear_expire();
+
         let key = KeyRef::new(&k);
         match self.map.get_mut(&key) {
             Some(entry) => {
                 let entry_ptr = entry.as_ptr();
                 unsafe {
                     mem::swap(&mut *(*entry_ptr).val.as_mut_ptr(), &mut v);
+                }
+                #[cfg(feature="ttl")]
+                unsafe {
+                    (*entry_ptr).expire = ttl.saturating_add(get_timestamp());
                 }
                 self.detach(entry_ptr);
                 self.attach(entry_ptr);
@@ -582,6 +677,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 let (val, entry) = self.replace_or_create_node(k, v);
                 let entry_ptr = entry.as_ptr();
                 self.attach(entry_ptr);
+                #[cfg(feature="ttl")]
+                unsafe {
+                    (*entry_ptr).expire = ttl.saturating_add(get_timestamp());
+                }
                 unsafe {
                     self.map
                         .insert(KeyRef::new((*entry_ptr).key.as_ptr()), entry);
@@ -591,22 +690,19 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-
     pub fn get_or_insert<F>(&mut self, k: K, f: F) -> &V
     where
         F: FnOnce() -> V, {
         &*self.get_or_insert_mut(k, f)
     }
 
-
-    pub fn get_or_insert_mut<F>(&mut self, k: K, f: F) -> &mut V
+    pub fn get_or_insert_mut<'a, F>(&'a mut self, k: K, f: F) -> &mut V
     where
         F: FnOnce() -> V, {
-        if let Some(l) = self.map.get(KeyWrapper::from_ref(&k)) {
-            let node = l.as_ptr();
-            self.detach(node);
-            self.attach(node);
-            unsafe { &mut *(*node).val.as_mut_ptr() }
+        if let Some(v) = self.get_node(&k) {
+            return unsafe {
+                &mut *(*v).val.as_mut_ptr()
+            };
         } else {
             let v = f();
 
@@ -618,6 +714,68 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             let keyref = unsafe { (*node_ptr).key.as_ptr() };
             self.map.insert(KeyRef { k: keyref }, node);
             unsafe { &mut *(*node_ptr).val.as_mut_ptr() }
+        }
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn clear_expire(&mut self) {
+        let now = get_timestamp();
+        if now < self.check_next {
+            return;
+        }
+        self.check_next = now + self.check_step;
+        unsafe {
+            let mut ptr = self.tail;
+            while ptr != self.head {
+                if (*ptr).is_little(&now) {
+                    let next = (*ptr).prev;
+                    self.detach(ptr);
+                    self.map.remove(&KeyRef::new(&*(*ptr).key.as_ptr()));
+                    let _ = *Box::from_raw(ptr);
+                    ptr = next;
+                } else {
+                    ptr = (*ptr).prev;
+                }
+            }
+        }
+    }
+
+    #[cfg(feature="ttl")]
+    #[inline(always)]
+    pub fn del_ttl<Q>(&mut self, k: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        self.set_ttl(k, u64::MAX);
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64)
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        if let Some(v) = self.get_node(&k) {
+            unsafe {
+                (*v).expire = get_timestamp().saturating_add(expire);
+            }
+        }
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn get_ttl<Q>(&mut self, k: &Q) -> Option<u64>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        if let Some(v) = self.get_node(&k) {
+            unsafe {
+                if (*v).expire == u64::MAX {
+                    Some((*v).expire)
+                } else {
+                    Some((*v).expire.saturating_sub(get_timestamp()))
+                }
+            }
+        } else {
+            None
         }
     }
 
@@ -1419,5 +1577,67 @@ mod tests {
         });
 
         assert!(handle.join().is_ok());
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_cache() {
+        let mut lru = LruCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), None);
+        assert_eq!(lru.len(), 0);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_check_cache() {
+        let mut lru = LruCache::new(3);
+        lru.set_check_step(1);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert("now", "algorithm");
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.len(), 2);
+        lru.insert_with_ttl("author", "tickbh", 3);
+        assert_eq!(lru.len(), 2);
+        assert_eq!(lru.get("help"), None);
+        assert_eq!(lru.len(), 2);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_del() {
+        let mut lru = LruCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        lru.del_ttl(&"author");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), Some(&"tickbh"));
+        assert_eq!(lru.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_set() {
+        let mut lru = LruCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        lru.set_ttl(&"help", 3);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), Some(&"ok"));
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), None);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        assert_eq!(lru.len(), 0);
     }
 }

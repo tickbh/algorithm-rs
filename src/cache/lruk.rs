@@ -20,8 +20,9 @@ use crate::{HashMap, DefaultHasher};
 use super::{KeyRef, KeyWrapper};
 
 
-const DEFAULT_TIMESK: usize = 10;
+const DEFAULT_TIMESK: usize = 2;
 
+/// LruK节点数据
 struct LruKEntry<K, V> {
     pub key: mem::MaybeUninit<K>,
     pub val: mem::MaybeUninit<V>,
@@ -80,11 +81,15 @@ impl<K, V> LruKEntry<K, V> {
 pub struct LruKCache<K, V, S> {
     map: HashMap<KeyRef<K>, NonNull<LruKEntry<K, V>>, S>,
     cap: usize,
+    /// 触发K次数，默认为2
     times: usize,
+    /// K次的队列
     head_times: *mut LruKEntry<K, V>,
     tail_times: *mut LruKEntry<K, V>,
+    /// 普通队列
     head: *mut LruKEntry<K, V>,
     tail: *mut LruKEntry<K, V>,
+    /// 普通队列的长度
     lru_count: usize,
 }
 
@@ -191,7 +196,7 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// 加到队列中
     fn attach(&mut self, entry: *mut LruKEntry<K, V>) {
         unsafe {
-            (*entry).times += 1;
+            (*entry).times = (*entry).times.saturating_add(1);
             if (*entry).times < self.times {
                 self.lru_count += 1;
                 (*entry).next = (*self.head).next;
@@ -254,7 +259,7 @@ impl<K, V, S> LruKCache<K, V, S> {
     ///     }
     ///     assert!(lru.len() == 2);
     ///     assert!(lru.get(&"this") == Some(&"lru ok".to_string()));
-    /// assert!(lru.get(&"hello") == Some(&"algorithm ok".to_string()));
+    ///     assert!(lru.get(&"hello") == Some(&"algorithm ok".to_string()));
     /// }
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {

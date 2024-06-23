@@ -2,6 +2,7 @@
 pub mod quadsort;
 pub use quadsort::{quad_sort, quad_sort_order_by};
 
+mod util;
 mod cache;
 mod tree;
 mod map;
@@ -12,6 +13,7 @@ pub use tree::RBTree;
 pub use map::{BitMap, RoaringBitMap};
 pub use timer::{TimerWheel, Timer};
 pub use arr::{CircularBuffer, FixedVec};
+pub use util::*;
 
 #[cfg(feature = "hashbrown")]
 extern crate hashbrown;
