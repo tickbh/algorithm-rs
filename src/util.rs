@@ -7,6 +7,6 @@ pub fn get_timestamp() -> u64 {
 }
 
 #[inline(always)]
-pub fn get_milltimestamp() -> u128 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("ok").as_millis()
+pub fn get_milltimestamp() -> u64 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("ok").as_millis() as u64
 }

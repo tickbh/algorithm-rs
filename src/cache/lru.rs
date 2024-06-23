@@ -29,7 +29,8 @@ pub(crate) struct LruEntry<K, V> {
     pub val: mem::MaybeUninit<V>,
     pub prev: *mut LruEntry<K, V>,
     pub next: *mut LruEntry<K, V>,
-
+    /// 带ttl的过期时间，单位秒
+    /// 如果为u64::MAX，则表示不过期
     #[cfg(feature = "ttl")]
     pub expire: u64,
 }
@@ -115,12 +116,15 @@ pub struct LruCache<K, V, S> {
     head: *mut LruEntry<K, V>,
     /// 双向列表的尾
     tail: *mut LruEntry<K, V>,
-
+    /// 下一次检查的时间点，如果大于该时间点则全部检查是否过期
     #[cfg(feature = "ttl")]
     check_next: u64,
-
+    /// 每次大检查点的时间间隔，如果不想启用该特性，可以将该值设成u64::MAX
     #[cfg(feature = "ttl")]
     check_step: u64,
+    /// 所有节点中是否存在带ttl的结点，如果均为普通的元素，则过期的将不进行检查
+    #[cfg(feature = "ttl")]
+    has_ttl: bool,
 }
 
 impl<K: Hash + Eq, V> Default for LruCache<K, V, DefaultHasher> {
@@ -155,6 +159,8 @@ impl<K, V, S> LruCache<K, V, S> {
             check_step: DEFAULT_CHECK_STEP,
             #[cfg(feature = "ttl")]
             check_next: get_timestamp()+DEFAULT_CHECK_STEP,
+            #[cfg(feature = "ttl")]
+            has_ttl: false,
         }
     }
 
@@ -604,7 +610,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 self.detach(node);
                 #[cfg(feature = "ttl")]
                 unsafe {
-                    if (*node).is_expire() {
+                    if self.has_ttl && (*node).is_expire() {
                         self.map.remove(KeyWrapper::from_ref(k));
                         let _ = *Box::from_raw(node);
                         return None;
@@ -638,6 +644,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 如果需要更新则需要手动的进行重新设置
     #[inline(always)]
     pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
+        self.has_ttl = true;
         self._capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
     }
 
@@ -719,6 +726,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
 
     #[cfg(feature="ttl")]
     pub fn clear_expire(&mut self) {
+        if !self.has_ttl {
+            return;
+        }
         let now = get_timestamp();
         if now < self.check_next {
             return;
@@ -755,6 +765,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized, {
         if let Some(v) = self.get_node(&k) {
+            self.has_ttl = true;
             unsafe {
                 (*v).expire = get_timestamp().saturating_add(expire);
             }
@@ -1639,5 +1650,18 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(1));
         assert_eq!(lru.get("help"), None);
         assert_eq!(lru.len(), 0);
+    }
+
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_get() {
+        let mut lru = LruCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        lru.insert("now", "algorithm");
+        assert_eq!(lru.get_ttl(&"help"), Some(1));
+        assert_eq!(lru.get_ttl(&"author"), Some(2));
+        assert_eq!(lru.get_ttl(&"now"), Some(u64::MAX));
     }
 }
