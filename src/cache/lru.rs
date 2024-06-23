@@ -165,6 +165,7 @@ impl<K, V, S> LruCache<K, V, S> {
     }
 
     /// 获取当前检查lru的间隔
+    #[cfg(feature="ttl")]
     pub fn get_check_step(&self) -> u64 {
         self.check_step
     }
@@ -174,6 +175,7 @@ impl<K, V, S> LruCache<K, V, S> {
     /// 如果数据太大的话遍历一次可能会比较久的时长
     /// 一次清理时间复杂度O(n)
     /// 仅仅在插入时触发检查，获取时仅检查当前元素
+    #[cfg(feature="ttl")]
     pub fn set_check_step(&mut self, check_step: u64) {
         self.check_step = check_step;
         self.check_next = get_timestamp() + self.check_step;
@@ -642,6 +644,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// 插入带有生存时间的元素
     /// 每次获取像redis一样，并不会更新生存时间
     /// 如果需要更新则需要手动的进行重新设置
+    #[cfg(feature="ttl")]
     #[inline(always)]
     pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
         self.has_ttl = true;

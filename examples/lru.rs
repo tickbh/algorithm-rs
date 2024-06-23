@@ -1,6 +1,7 @@
 
 use algorithm::LruCache;
 
+#[cfg(feature="ttl")]
 fn run_ttl() {
     let mut lru = LruCache::new(3);
     lru.insert_with_ttl("help", "ok", 1);
@@ -20,5 +21,6 @@ fn main() {
     assert_eq!(lru.get("this"), Some(&"lru"));
     assert_eq!(lru.get("now"), None);
 
+    #[cfg(feature="ttl")]
     run_ttl();
 }
