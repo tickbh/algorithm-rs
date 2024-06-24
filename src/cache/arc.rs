@@ -22,6 +22,11 @@ use crate::{LfuCache, LruCache};
 
 use super::{lfu, lru};
 
+#[cfg(feature = "ttl")]
+use crate::get_milltimestamp;
+#[cfg(feature = "ttl")]
+const DEFAULT_CHECK_STEP: u64 = 120;
+
 /// ARC(Adaptive Replacement Cache): 自适应缓存替换算法,它结合了LRU与LFU,来获得可用缓存的最佳使用。
 /// 设置容量之后将最大保持该容量大小的数据
 /// 后进的数据将会淘汰最久没有被访问的数据
@@ -51,6 +56,15 @@ pub struct ArcCache<K, V, S> {
     ghost_lfu: LruCache<K, V, S>,
 
     cap: usize,
+    /// 下一次检查的时间点，如果大于该时间点则全部检查是否过期
+    #[cfg(feature = "ttl")]
+    check_next: u64,
+    /// 每次大检查点的时间间隔，如果不想启用该特性，可以将该值设成u64::MAX
+    #[cfg(feature = "ttl")]
+    check_step: u64,
+    /// 所有节点中是否存在带ttl的结点，如果均为普通的元素，则过期的将不进行检查
+    #[cfg(feature = "ttl")]
+    has_ttl: bool,
 }
 
 impl<K: Hash + Eq, V> Default for ArcCache<K, V, DefaultHasher> {
@@ -78,12 +92,37 @@ impl<K, V, S: Clone> ArcCache<K, V, S> {
             ghost_lfu: LruCache::with_hasher(cap, hash_builder),
 
             cap,
+            #[cfg(feature = "ttl")]
+            check_step: DEFAULT_CHECK_STEP,
+            #[cfg(feature = "ttl")]
+            check_next: get_milltimestamp()+DEFAULT_CHECK_STEP * 1000,
+            #[cfg(feature = "ttl")]
+            has_ttl: false,
         }
     }
 }
 
 impl<K, V, S> ArcCache<K, V, S> {
     
+    /// 获取当前检查lru的间隔
+    #[cfg(feature="ttl")]
+    pub fn get_check_step(&self) -> u64 {
+        self.check_step
+    }
+
+    /// 设置当前检查lru的间隔
+    /// 单位为秒，意思就是每隔多少秒会清理一次数据
+    /// 如果数据太大的话遍历一次可能会比较久的时长
+    /// 一次清理时间复杂度O(n)
+    /// 仅仅在插入时触发检查，获取时仅检查当前元素
+    #[cfg(feature="ttl")]
+    pub fn set_check_step(&mut self, check_step: u64) {
+        self.check_step = check_step;
+        self.check_next = get_milltimestamp() + self.check_step * 1000;
+        self.main_lru.set_check_step(check_step);
+        self.main_lfu.set_check_step(check_step);
+    }
+
     /// 获取当前容量
     pub fn capacity(&self) -> usize {
         self.cap
@@ -245,24 +284,6 @@ impl<K, V, S> ArcCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
-    // /// 排出当前数据
-    // ///
-    // /// ```
-    // /// use algorithm::ArcCache;
-    // /// fn main() {
-    // ///     let mut arc = ArcCache::new(3);
-    // ///     arc.insert("hello", "algorithm");
-    // ///     arc.insert("this", "arc");
-    // ///     {
-    // ///         let mut drain = arc.drain();
-    // ///         assert!(drain.next()==Some(("hello", "algorithm")));
-    // ///     }
-    // ///     assert!(arc.len() == 0);
-    // /// }
-    // /// ```
-    // pub fn drain(&mut self) -> Drain<'_, K, V, S> {
-    //     Drain { base: self }
-    // }
 
     /// 弹出栈顶上的数据, 最常使用的数据
     ///
@@ -428,6 +449,40 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.get_mut_key_value(k).map(|(_, v)| v)
     }
 
+    #[cfg(feature="ttl")]
+    pub fn get_mut_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &mut V)>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        // {
+        //     if let Some(v) = self.main_lfu.get_mut_key_value(k) {
+        //         return Some(v)
+        //     }
+        // }
+        if let Some((key, val, ttl)) = self.main_lru.remove_with_ttl(k) {
+            self.main_lfu.insert_with_ttl(key, val, ttl);
+            return self.main_lfu.get_mut_key_value(k);
+        }
+
+        if let Some((key, val, ttl)) = self.ghost_lfu.remove_with_ttl(k) {
+            self.main_lfu.full_increase();
+            self.main_lru.full_decrease();
+            self.main_lfu.insert_with_ttl(key, val, ttl);
+            return self.main_lfu.get_mut_key_value(k);
+        }
+
+        if let Some((key, val, ttl)) = self.ghost_lru.remove_with_ttl(k) {
+            self.main_lru.full_increase();
+            self.main_lfu.full_decrease();
+            self.main_lru.insert_with_ttl(key, val, ttl);
+            return self.main_lru.get_mut_key_value(k);
+        }
+        self.main_lfu.get_mut_key_value(k)
+    }
+
+    
+    #[cfg(not(feature="ttl"))]
     pub fn get_mut_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &mut V)>
     where
         K: Borrow<Q>,
@@ -470,11 +525,50 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     ///     assert!(arc.insert("this", "arc good") == Some(&"arc"));
     /// }
     /// ```
+    #[inline(always)]
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.capture_insert(k, v).map(|(_, v, _)| v)
     }
 
+    /// 插入带有生存时间的元素
+    /// 每次获取像redis一样，并不会更新生存时间
+    /// 如果需要更新则需要手动的进行重新设置
+    #[cfg(feature="ttl")]
+    #[inline(always)]
+    pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
+        self.capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
+    }
+
+    #[inline(always)]
     pub fn capture_insert(&mut self, k: K, v: V) -> Option<(K, V, bool)> {
+        self._capture_insert_with_ttl(k, v, u64::MAX)
+    }
+
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
+        if ttl == 0 { return None };
+        self.has_ttl = true;
+        self._capture_insert_with_ttl(k, v, ttl)
+    }
+
+    #[cfg(feature = "ttl")]
+    #[allow(unused_variables)]
+    fn _capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
+        if let Some((key, val, same)) = self.main_lru.capture_insert_with_ttl(k, v, ttl) {
+            if same {
+                Some((key, val, true))
+            } else {
+                self.ghost_lru.capture_insert_with_ttl(key, val, ttl)
+            }
+        } else {
+            None
+        }
+    }
+
+    #[cfg(not(feature = "ttl"))]
+    #[allow(unused_variables)]
+    fn _capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
         if let Some((key, val, same)) = self.main_lru.capture_insert(k, v) {
             if same {
                 Some((key, val, true))
@@ -527,6 +621,52 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.get_or_insert_mut(k, f)
     }
 
+
+    #[cfg(feature="ttl")]
+    pub fn clear_expire(&mut self) {
+        if !self.has_ttl {
+            return;
+        }
+        let now = get_milltimestamp();
+        if now < self.check_next {
+            return;
+        }
+        self.check_next = now + self.check_step;
+        self.main_lfu.clear_expire();
+        self.main_lru.clear_expire();
+    }
+
+    #[cfg(feature="ttl")]
+    #[inline(always)]
+    pub fn del_ttl<Q>(&mut self, k: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        self.set_ttl(k, u64::MAX);
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+            
+        if self.main_lru.set_ttl(k, expire) {
+            return true
+        }
+        self.main_lfu.set_ttl(k, expire)
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn get_ttl<Q>(&mut self, k: &Q) -> Option<u64>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        if let Some(v) = self.main_lfu.get_ttl(k) {
+            return Some(v)
+        }
+        self.main_lru.get_ttl(k)
+    }
 
     /// 移除元素
     ///
@@ -596,6 +736,12 @@ impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for ArcCache<
             ghost_lru: self.ghost_lru.clone(),
             ghost_lfu: self.ghost_lfu.clone(),
             cap: self.cap,
+            #[cfg(feature="ttl")]
+            check_next: self.check_next,
+            #[cfg(feature="ttl")]
+            check_step: self.check_step,
+            #[cfg(feature="ttl")]
+            has_ttl: self.has_ttl,
         }
     }
 }
@@ -1224,5 +1370,81 @@ mod tests {
         });
 
         assert!(handle.join().is_ok());
+    }
+
+    
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_cache() {
+        let mut lru = ArcCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), None);
+        assert_eq!(lru.len(), 0);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_check_cache() {
+        let mut lru = ArcCache::new(3);
+        lru.set_check_step(1);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert("now", "algorithm");
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.len(), 2);
+        lru.insert_with_ttl("author", "tickbh", 3);
+        assert_eq!(lru.len(), 2);
+        assert_eq!(lru.get("help"), None);
+        assert_eq!(lru.len(), 2);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_del() {
+        let mut lru = ArcCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        lru.del_ttl(&"author");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), Some(&"tickbh"));
+        assert_eq!(lru.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_set() {
+        let mut lru = ArcCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        lru.set_ttl(&"help", 3);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), Some(&"ok"));
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), None);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        assert_eq!(lru.len(), 0);
+    }
+
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_get() {
+        let mut lru = ArcCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        lru.insert("now", "algorithm");
+        assert_eq!(lru.get_ttl(&"help"), Some(1));
+        assert_eq!(lru.get_ttl(&"author"), Some(2));
+        assert_eq!(lru.get_ttl(&"now"), Some(u64::MAX));
     }
 }

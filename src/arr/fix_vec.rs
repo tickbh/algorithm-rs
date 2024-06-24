@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::ptr::NonNull;
 
 #[derive(Debug)]
 struct FixedVecNode<T> {
@@ -400,10 +399,16 @@ impl<T> FixedVec<T> {
     /// ```
     #[inline]
     pub fn iter_mut(&mut self) -> FixedVecIterMut<'_, T> {
-        let head = self.head;
-        let tail = self.tail;
-        let len = self.len();
-        FixedVecIterMut::new(&mut self.nodes, head, tail, len)
+        FixedVecIterMut {
+            head: self.head,
+            tail: self.tail,
+            len: self.len(),
+            list: self,
+        }
+        // let head = self.head;
+        // let tail = self.tail;
+        // let len = self.len();
+        // FixedVecIterMut::new(self, head, tail, len)
     }
 
     fn reorder(&mut self) {
@@ -670,46 +675,23 @@ impl<'a, T> DoubleEndedIterator for FixedVecIter<'a, T> {
     }
 }
 
+#[derive(Debug)]
 pub struct FixedVecIterMut<'a, T> {
-    ptr: NonNull<Option<FixedVecNode<T>>>,
+    list: &'a mut FixedVec<T>,
     head: usize,
     tail: usize,
     len: usize,
-    _marker: std::marker::PhantomData<&'a mut T>,
-}
-
-impl<'a, T> FixedVecIterMut<'a, T> {
-    #[allow(unsafe_code)]
-    fn new(
-        slice: &'a mut [Option<FixedVecNode<T>>],
-        head: usize,
-        tail: usize,
-        len: usize,
-    ) -> Self {
-        let ptr = slice.as_mut_ptr();
-        Self {
-            ptr: unsafe { NonNull::new_unchecked(ptr) },
-            head,
-            tail,
-            len,
-            _marker: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<'a, T> Iterator for FixedVecIterMut<'a, T> {
     type Item = (usize, &'a mut T);
 
-    #[allow(unsafe_code)]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len > 0 {
             let head = self.head;
-            let node_ref = unsafe {
-                let ptr = NonNull::new_unchecked(self.ptr.as_ptr().add(head)).as_ptr();
-                &mut *ptr
+            let node = unsafe {
+                core::mem::transmute::<&'_ mut FixedVecNode<T>, &'a mut FixedVecNode<T>>(self.list.node_mut(head).unwrap())   
             };
-
-            let node = node_ref.as_mut().unwrap();
             self.head = node.next;
             self.len -= 1;
             Some((head, &mut node.data))
@@ -724,16 +706,12 @@ impl<'a, T> Iterator for FixedVecIterMut<'a, T> {
 }
 
 impl<'a, T> DoubleEndedIterator for FixedVecIterMut<'a, T> {
-    #[allow(unsafe_code)]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len > 0 {
             let tail = self.tail;
-            let node_ref = unsafe {
-                let ptr = NonNull::new_unchecked(self.ptr.as_ptr().add(tail)).as_ptr();
-                &mut *ptr
+            let node = unsafe {
+                core::mem::transmute::<&'_ mut FixedVecNode<T>, &'a mut FixedVecNode<T>>(self.list.node_mut(tail).unwrap())   
             };
-
-            let node = node_ref.as_mut().unwrap();
             self.tail = node.prev;
             self.len -= 1;
             Some((tail, &mut node.data))

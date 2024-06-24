@@ -1,9 +1,9 @@
 [package]
 name = "algorithm"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
-description = "about algorithm data structure, now has lru/lru-k/lfu/slab/rbtree/roaring_bitmap/timer_wheelss, 关于算法常用的数据结构"
+description = "about algorithm data structure, now has ttl with lru/lru-k/lfu/arc and slab/rbtree/roaring_bitmap/timer_wheelss, 关于算法常用的数据结构"
 repository = "https://github.com/tickbh/algorithm-rs"
 license = "Apache-2.0"
 keywords = ["arc", "lru", "lfu", "timerwheel", "slab"]
@@ -24,5 +24,6 @@ opt-level = 3
 debug = true
 
 [features]
+default = ["hashbrown", "ttl"]
 hashbrown=[]
 ttl=[]

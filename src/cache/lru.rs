@@ -18,7 +18,7 @@ use crate::{HashMap, DefaultHasher};
 use super::{KeyRef, KeyWrapper};
 
 #[cfg(feature = "ttl")]
-use crate::{get_timestamp};
+use crate::get_milltimestamp;
 #[cfg(feature = "ttl")]
 const DEFAULT_CHECK_STEP: u64 = 120;
 /// Lru节点数据
@@ -74,7 +74,7 @@ impl<K, V> LruEntry<K, V> {
     #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn is_expire(&self) -> bool {
-        get_timestamp() >= self.expire
+        get_milltimestamp() >= self.expire
     }
 
 
@@ -82,6 +82,16 @@ impl<K, V> LruEntry<K, V> {
     #[inline(always)]
     pub fn is_little(&self, time: &u64) -> bool {
         time >= &self.expire
+    }
+    
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn get_ttl(&self) -> u64 {
+        if self.expire == u64::MAX {
+            self.expire
+        } else {
+            self.expire.saturating_sub(get_milltimestamp()) / 1000
+        }
     }
 }
 
@@ -158,7 +168,7 @@ impl<K, V, S> LruCache<K, V, S> {
             #[cfg(feature = "ttl")]
             check_step: DEFAULT_CHECK_STEP,
             #[cfg(feature = "ttl")]
-            check_next: get_timestamp()+DEFAULT_CHECK_STEP,
+            check_next: get_milltimestamp()+DEFAULT_CHECK_STEP * 1000,
             #[cfg(feature = "ttl")]
             has_ttl: false,
         }
@@ -178,7 +188,7 @@ impl<K, V, S> LruCache<K, V, S> {
     #[cfg(feature="ttl")]
     pub fn set_check_step(&mut self, check_step: u64) {
         self.check_step = check_step;
-        self.check_next = get_timestamp() + self.check_step;
+        self.check_next = get_milltimestamp() + self.check_step * 1000;
     }
 
     /// 获取当前容量
@@ -647,8 +657,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     #[cfg(feature="ttl")]
     #[inline(always)]
     pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
-        self.has_ttl = true;
-        self._capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
+        self.capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
     }
 
     #[inline(always)]
@@ -658,8 +667,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
 
     #[cfg(feature = "ttl")]
     #[inline(always)]
-    pub fn capture_insert_with_ttl(&mut self, k: K, v: V) -> Option<(K, V, bool)> {
-        self._capture_insert_with_ttl(k, v, u64::MAX)
+    pub fn capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
+        if ttl == 0 { return None };
+        self.has_ttl = true;
+        self._capture_insert_with_ttl(k, v, ttl)
     }
 
     #[allow(unused_variables)]
@@ -676,7 +687,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 }
                 #[cfg(feature="ttl")]
                 unsafe {
-                    (*entry_ptr).expire = ttl.saturating_add(get_timestamp());
+                    (*entry_ptr).expire = ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
                 }
                 self.detach(entry_ptr);
                 self.attach(entry_ptr);
@@ -689,7 +700,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 self.attach(entry_ptr);
                 #[cfg(feature="ttl")]
                 unsafe {
-                    (*entry_ptr).expire = ttl.saturating_add(get_timestamp());
+                    (*entry_ptr).expire = ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
                 }
                 unsafe {
                     self.map
@@ -732,7 +743,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         if !self.has_ttl {
             return;
         }
-        let now = get_timestamp();
+        let now = get_milltimestamp();
         if now < self.check_next {
             return;
         }
@@ -763,15 +774,18 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     }
 
     #[cfg(feature="ttl")]
-    pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64)
+    pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64) -> bool
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized, {
         if let Some(v) = self.get_node(&k) {
             self.has_ttl = true;
             unsafe {
-                (*v).expire = get_timestamp().saturating_add(expire);
+                (*v).expire = get_milltimestamp().saturating_add(expire.saturating_mul(1000));
             }
+            true
+        } else {
+            false
         }
     }
 
@@ -782,11 +796,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         Q: Hash + Eq + ?Sized, {
         if let Some(v) = self.get_node(&k) {
             unsafe {
-                if (*v).expire == u64::MAX {
-                    Some((*v).expire)
-                } else {
-                    Some((*v).expire.saturating_sub(get_timestamp()))
-                }
+                Some((*v).get_ttl())
             }
         } else {
             None
@@ -810,11 +820,42 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
             K: Borrow<Q>,
             Q: Hash + Eq + ?Sized,
     {
+        if let Some(node) = self.remove_node(k) {
+            unsafe {
+                Some((node.key.assume_init(), node.val.assume_init()))   
+            }
+        } else {
+            None
+        }
+    }
+
+    
+    #[cfg(feature="ttl")]
+    pub fn remove_with_ttl<Q>(&mut self, k: &Q) -> Option<(K, V, u64)>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
+        if let Some(node) = self.remove_node(k) {
+            unsafe {
+                let ttl = node.get_ttl();
+                Some((node.key.assume_init(), node.val.assume_init(), ttl))
+            }
+        } else {
+            None
+        }
+    }
+    
+    fn remove_node<Q>(&mut self, k: &Q) -> Option<LruEntry<K, V>>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
         match self.map.remove(KeyWrapper::from_ref(k)) {
             Some(l) => unsafe {
                 self.detach(l.as_ptr());
                 let node = *Box::from_raw(l.as_ptr());
-                Some((node.key.assume_init(), node.val.assume_init()))
+                Some(node)
             },
             None => None,
         }

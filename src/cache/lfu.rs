@@ -71,10 +71,19 @@ fn get_freq_by_times(times: usize) -> u8 {
     }
 }
 
-struct LfuEntry<K, V> {
+#[cfg(feature = "ttl")]
+use crate::get_milltimestamp;
+#[cfg(feature = "ttl")]
+const DEFAULT_CHECK_STEP: u64 = 120;
+
+pub(crate) struct LfuEntry<K, V> {
     pub key: mem::MaybeUninit<K>,
     pub val: mem::MaybeUninit<V>,
     pub counter: usize,
+    /// 带ttl的过期时间，单位秒
+    /// 如果为u64::MAX，则表示不过期
+    #[cfg(feature = "ttl")]
+    pub expire: u64,
 }
 
 impl<K, V> LfuEntry<K, V> {
@@ -83,12 +92,38 @@ impl<K, V> LfuEntry<K, V> {
             key: mem::MaybeUninit::new(k),
             val: mem::MaybeUninit::new(v),
             counter,
+            #[cfg(feature = "ttl")]
+            expire: u64::MAX,
         }
     }
 
-    pub fn key_ref(&self) -> KeyRef<K> {
+    fn key_ref(&self) -> KeyRef<K> {
         KeyRef {
             k: self.key.as_ptr(),
+        }
+    }
+
+    
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn is_expire(&self) -> bool {
+        get_milltimestamp() >= self.expire
+    }
+
+
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn is_little(&self, time: &u64) -> bool {
+        time >= &self.expire
+    }
+    
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn get_ttl(&self) -> u64 {
+        if self.expire == u64::MAX {
+            self.expire
+        } else {
+            self.expire.saturating_sub(get_milltimestamp()) / 1000
         }
     }
 }
@@ -118,7 +153,7 @@ impl<K, V> LfuEntry<K, V> {
 /// ```
 pub struct LfuCache<K, V, S> {
     map: HashMap<KeyRef<K>, NonNull<LfuEntry<K, V>>, S>,
-    /// 因为HashSet的pop耗时太长, 所以取LruCache暂时做为平替
+    /// 因为HashSet的pop耗时太长, 所以取LfuCache暂时做为平替
     times_map: HashMap<u8, LruCache<KeyRef<K>, (), DefaultHasher>>,
     cap: usize,
     max_freq: u8,
@@ -127,6 +162,16 @@ pub struct LfuCache<K, V, S> {
 
     default_count: usize,
     reduce_count: usize,
+
+    /// 下一次检查的时间点，如果大于该时间点则全部检查是否过期
+    #[cfg(feature = "ttl")]
+    check_next: u64,
+    /// 每次大检查点的时间间隔，如果不想启用该特性，可以将该值设成u64::MAX
+    #[cfg(feature = "ttl")]
+    check_step: u64,
+    /// 所有节点中是否存在带ttl的结点，如果均为普通的元素，则过期的将不进行检查
+    #[cfg(feature = "ttl")]
+    has_ttl: bool,
 }
 
 impl<K: Hash + Eq, V> LfuCache<K, V, DefaultHasher> {
@@ -149,7 +194,30 @@ impl<K, V, S> LfuCache<K, V, S> {
             reduce_count: cap.saturating_mul(100),
             default_count: 4,
             cap,
+            #[cfg(feature = "ttl")]
+            check_step: DEFAULT_CHECK_STEP,
+            #[cfg(feature = "ttl")]
+            check_next: get_milltimestamp()+DEFAULT_CHECK_STEP * 1000,
+            #[cfg(feature = "ttl")]
+            has_ttl: false,
         }
+    }
+
+    /// 获取当前检查lru的间隔
+    #[cfg(feature="ttl")]
+    pub fn get_check_step(&self) -> u64 {
+        self.check_step
+    }
+
+    /// 设置当前检查lru的间隔
+    /// 单位为秒，意思就是每隔多少秒会清理一次数据
+    /// 如果数据太大的话遍历一次可能会比较久的时长
+    /// 一次清理时间复杂度O(n)
+    /// 仅仅在插入时触发检查，获取时仅检查当前元素
+    #[cfg(feature="ttl")]
+    pub fn set_check_step(&mut self, check_step: u64) {
+        self.check_step = check_step;
+        self.check_next = get_milltimestamp() + self.check_step * 1000;
     }
 
     /// 设定初始进入列表中默认的访问次数，防止出现一进入就权重过低的情况
@@ -631,9 +699,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     /// 获取key值相对应的value值, 根据hash判定
     ///
     /// ```
-    /// use algorithm::LruCache;
+    /// use algorithm::LfuCache;
     /// fn main() {
-    ///     let mut lru = LruCache::new(3);
+    ///     let mut lru = LfuCache::new(3);
     ///     lru.insert("hello", "algorithm");
     ///     lru.insert("this", "lru");
     ///     assert!(lru.raw_get(&"this") == Some(&"lru"));
@@ -664,6 +732,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     assert!(lru.get(&"this") == Some(&"lru"));
     /// }
     /// ```
+    #[inline]
     pub fn get<Q>(&mut self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -683,19 +752,13 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     assert!(lru.get_key_value(&"this") == Some((&"this", &"lru")));
     /// }
     /// ```
+    #[inline]
     pub fn get_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &V)>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        match self.map.get(KeyWrapper::from_ref(k)) {
-            Some(l) => {
-                let node = l.as_ptr();
-                self.try_fix_entry(node);
-                unsafe { Some((&*(*node).key.as_ptr(), &*(*node).val.as_ptr())) }
-            }
-            None => None,
-        }
+        self.get_mut_key_value(k).map(|(k, v)| (k, &*v))
     }
 
     /// 获取key值相对应的value值, 根据hash判定, 可编辑被改变
@@ -710,6 +773,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
     ///     assert!(lru.get_key_value(&"this") == Some((&"this", &"lru good".to_string())));
     /// }
     /// ```
+    #[inline]
     pub fn get_mut<Q>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
@@ -723,11 +787,35 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
+        match self.get_node(k) {
+            Some(node) => {
+                unsafe { Some(( &*(*node).key.as_mut_ptr(), &mut *(*node).val.as_mut_ptr())) }
+            }
+            None => None,
+        }
+    }
+
+    
+    pub(crate) fn get_node<Q>(&mut self, k: &Q) -> Option<*mut LfuEntry<K, V>>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
                 let node = l.as_ptr();
+                #[cfg(feature = "ttl")]
+                unsafe {
+                    if self.has_ttl && (*node).is_expire() {
+                        self.detach(node);
+                        self.map.remove(KeyWrapper::from_ref(k));
+                        let _ = *Box::from_raw(node);
+                        return None;
+                    }
+                }
+                
                 self.try_fix_entry(node);
-                unsafe { Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr())) }
+                Some(node)
             }
             None => None,
         }
@@ -748,13 +836,45 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         self.capture_insert(k, v).map(|(_, v, _)| v)
     }
 
-    pub fn capture_insert(&mut self, k: K, mut v: V) -> Option<(K, V, bool)> {
+    #[inline(always)]
+    pub fn capture_insert(&mut self, k: K, v: V) -> Option<(K, V, bool)> {
+        self._capture_insert_with_ttl(k, v, u64::MAX)
+    }
+
+    /// 插入带有生存时间的元素
+    /// 每次获取像redis一样，并不会更新生存时间
+    /// 如果需要更新则需要手动的进行重新设置
+    #[cfg(feature="ttl")]
+    #[inline(always)]
+    pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
+        self.capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
+    }
+    
+    #[cfg(feature = "ttl")]
+    #[inline(always)]
+    pub fn capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
+        if ttl == 0 { return None };
+        self.has_ttl = true;
+        self._capture_insert_with_ttl(k, v, ttl)
+    }
+
+
+    #[allow(unused_variables)]
+    fn _capture_insert_with_ttl(&mut self, k: K, mut v: V, ttl: u64) -> Option<(K, V, bool)> {
+        #[cfg(feature="ttl")]
+        self.clear_expire();
+
         let key = KeyRef::new(&k);
         match self.map.get_mut(&key) {
             Some(entry) => {
                 let entry_ptr = entry.as_ptr();
                 unsafe {
                     mem::swap(&mut *(*entry_ptr).val.as_mut_ptr(), &mut v);
+                }
+                
+                #[cfg(feature="ttl")]
+                unsafe {
+                    (*entry_ptr).expire = ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
                 }
                 self.try_fix_entry(entry_ptr);
 
@@ -764,6 +884,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                 let (val, entry) = self.replace_or_create_node(k, v);
                 let entry_ptr = entry.as_ptr();
                 self.attach(entry_ptr);
+                
+                #[cfg(feature="ttl")]
+                unsafe {
+                    (*entry_ptr).expire = ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
+                }
                 unsafe {
                     self.map
                         .insert(KeyRef::new((*entry_ptr).key.as_ptr()), entry);
@@ -803,6 +928,72 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         }
     }
 
+    #[cfg(feature="ttl")]
+    pub fn clear_expire(&mut self) {
+        if !self.has_ttl {
+            return;
+        }
+        let now = get_milltimestamp();
+        if now < self.check_next {
+            return;
+        }
+        self.check_next = now + self.check_step;
+        unsafe {
+            let mut expire_keys = vec![];
+            for (k, v) in self.map.iter() {
+                if v.as_ref().is_little(&now) {
+                    expire_keys.push((*k).clone());
+                }
+            }
+
+            for k in expire_keys.drain(..) {
+                self.remove(&*k.k);
+            }
+        }
+    }
+
+    #[cfg(feature="ttl")]
+    #[inline(always)]
+    pub fn del_ttl<Q>(&mut self, k: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        self.set_ttl(k, u64::MAX);
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        if let Some(v) = self.get_node(&k) {
+            self.has_ttl = true;
+            unsafe {
+                (*v).expire = get_milltimestamp().saturating_add(expire.saturating_mul(1000));
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    #[cfg(feature="ttl")]
+    pub fn get_ttl<Q>(&mut self, k: &Q) -> Option<u64>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized, {
+        if let Some(v) = self.get_node(&k) {
+            unsafe {
+                if (*v).expire == u64::MAX {
+                    Some((*v).expire)
+                } else {
+                    Some((*v).expire.saturating_sub(get_milltimestamp()) / 1000)
+                }
+            }
+        } else {
+            None
+        }
+    }
 
     /// 移除元素
     ///
@@ -821,11 +1012,43 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
+        if let Some(node) = self.remove_node(k) {
+            unsafe {
+                Some((node.key.assume_init(), node.val.assume_init()))   
+            }
+        } else {
+            None
+        }
+    }
+
+    
+    #[cfg(feature="ttl")]
+    pub fn remove_with_ttl<Q>(&mut self, k: &Q) -> Option<(K, V, u64)>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
+        if let Some(node) = self.remove_node(k) {
+            unsafe {
+                let ttl = node.get_ttl();
+                Some((node.key.assume_init(), node.val.assume_init(), ttl))
+            }
+        } else {
+            None
+        }
+    }
+    
+    fn remove_node<Q>(&mut self, k: &Q) -> Option<LfuEntry<K, V>>
+        where
+            K: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+    {
+        
         match self.map.remove(KeyWrapper::from_ref(k)) {
             Some(l) => unsafe {
                 self.detach(l.as_ptr());
                 let node = *Box::from_raw(l.as_ptr());
-                Some((node.key.assume_init(), node.val.assume_init()))
+                Some(node)
             },
             None => None,
         }
@@ -1716,5 +1939,81 @@ mod tests {
         });
 
         assert!(handle.join().is_ok());
+    }
+
+    
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_cache() {
+        let mut lru = LfuCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), None);
+        assert_eq!(lru.len(), 0);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_check_cache() {
+        let mut lru = LfuCache::new(3);
+        lru.set_check_step(1);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert("now", "algorithm");
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.len(), 2);
+        lru.insert_with_ttl("author", "tickbh", 3);
+        assert_eq!(lru.len(), 2);
+        assert_eq!(lru.get("help"), None);
+        assert_eq!(lru.len(), 2);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_del() {
+        let mut lru = LfuCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        lru.del_ttl(&"author");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), Some(&"tickbh"));
+        assert_eq!(lru.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_set() {
+        let mut lru = LfuCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        lru.set_ttl(&"help", 3);
+        assert_eq!(lru.len(), 2);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), Some(&"ok"));
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("author"), None);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(lru.get("help"), None);
+        assert_eq!(lru.len(), 0);
+    }
+
+
+    #[test]
+    #[cfg(feature="ttl")]
+    fn test_ttl_get() {
+        let mut lru = LfuCache::new(3);
+        lru.insert_with_ttl("help", "ok", 1);
+        lru.insert_with_ttl("author", "tickbh", 2);
+        lru.insert("now", "algorithm");
+        assert_eq!(lru.get_ttl(&"help"), Some(1));
+        assert_eq!(lru.get_ttl(&"author"), Some(2));
+        assert_eq!(lru.get_ttl(&"now"), Some(u64::MAX));
     }
 }

@@ -13,7 +13,6 @@ pub use lfu::LfuCache;
 pub use arc::ArcCache;
 pub use slab::{Slab, Reinit};
 
-#[derive(Clone)]
 struct KeyRef<K> {
     pub k: *const K,
 }
@@ -21,6 +20,12 @@ struct KeyRef<K> {
 impl<K> KeyRef<K> {
     pub fn new(k: *const K) -> Self {
         Self { k }
+    }
+}
+
+impl<K> Clone for KeyRef<K> {
+    fn clone(&self) -> Self {
+        Self { k: self.k }
     }
 }
 
