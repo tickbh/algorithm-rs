@@ -76,9 +76,11 @@ use crate::get_milltimestamp;
 #[cfg(feature = "ttl")]
 const DEFAULT_CHECK_STEP: u64 = 120;
 
+/// Lfu节点数据
 pub(crate) struct LfuEntry<K, V> {
     pub key: mem::MaybeUninit<K>,
     pub val: mem::MaybeUninit<V>,
+    /// 访问总频次
     pub counter: usize,
     /// 带ttl的过期时间，单位秒
     /// 如果为u64::MAX，则表示不过期
@@ -156,11 +158,15 @@ pub struct LfuCache<K, V, S> {
     /// 因为HashSet的pop耗时太长, 所以取LfuCache暂时做为平替
     times_map: HashMap<u8, LruCache<KeyRef<K>, (), DefaultHasher>>,
     cap: usize,
+    /// 最大的访问频次 
     max_freq: u8,
+    /// 最小的访问频次
     min_freq: u8,
+    /// 总的访问次数
     visit_count: usize,
-
+    /// 初始的访问次数
     default_count: usize,
+    /// 每多少次访问进行一次衰减
     reduce_count: usize,
 
     /// 下一次检查的时间点，如果大于该时间点则全部检查是否过期
@@ -552,7 +558,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     if val.is_empty() {
                         continue;
                     }
-                    let key = Self::_pop_one(val).unwrap();
+                    let key = val.pop_unusual().unwrap().0;
                     let value = self.map.remove(&key).expect("must ok");
                     let node = *Box::from_raw(value.as_ptr());
                     let LfuEntry { key, val, .. } = node;
@@ -587,7 +593,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     if val.is_empty() {
                         continue;
                     }
-                    let key = Self::_pop_one(val).unwrap();
+                    let key = val.pop_unusual().unwrap().0;
                     let value = self.map.remove(&key).expect("must ok");
                     let node = *Box::from_raw(value.as_ptr());
                     let LfuEntry { key, val, .. } = node;
@@ -1061,7 +1067,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
                     if val.is_empty() {
                         continue;
                     }
-                    let key = Self::_pop_one(val).unwrap();
+                    let key = val.pop_unusual().unwrap().0;
                     let old_node = self.map.remove(&key).unwrap();
                     let node_ptr: *mut LfuEntry<K, V> = old_node.as_ptr();
 
@@ -1123,16 +1129,16 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
         }
     }
 
-    fn _pop_one(keys: &mut LruCache<KeyRef<K>, (), DefaultHasher>) -> Option<KeyRef<K>> {
-        keys.pop_usual().map(|(k, _)| k)
-        // let k = if let Some(k) = keys.iter().next() {
-        //     KeyRef { k: k.k }
-        // } else {
-        //     return None;
-        // };
-        // keys.remove(&k);
-        // Some(k)
-    }
+    // fn _pop_one(keys: &mut LruCache<KeyRef<K>, (), DefaultHasher>) -> Option<KeyRef<K>> {
+    //     keys.pop_usual().map(|(k, _)| k)
+    //     // let k = if let Some(k) = keys.iter().next() {
+    //     //     KeyRef { k: k.k }
+    //     // } else {
+    //     //     return None;
+    //     // };
+    //     // keys.remove(&k);
+    //     // Some(k)
+    // }
 }
 
 

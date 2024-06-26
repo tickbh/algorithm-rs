@@ -1,14 +1,20 @@
-## algorithm
+## algorithm/ 算法结构相关
+[![crates.io](https://img.shields.io/crates/v/algorithm.svg)](https://crates.io/crates/algorithm)
+[![rustc 1.70.0](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://img.shields.io/badge/rust-1.70%2B-orange.svg)
+[![Released API docs](https://docs.rs/algorithm/badge.svg)](https://docs.rs/algorithm)
+
 将提供一些常用的数据结构以供使用。目前提供的数据结构
-* **LruCache** 最近未使用缓存
-* **LruKCache** 最近未使用缓存, K次分类列表
-* **LfuCache** 按缓存访问次数做排序,优先淘汰访问最少次数的
+* **LruCache** 最近未使用缓存，可用feature启用ttl
+* **LruKCache** 最近未使用缓存, K次分类列表，可用feature启用ttl
+* **LfuCache** 按缓存访问次数做排序,优先淘汰访问最少次数的，可用feature启用ttl
+* **ArcCache** Adaptive Replacement Cache，自适应缓存替换算法，可用feature启用ttl
 * **Slab** 仿linux中的Slab结构,对大对象做到初始化缓存使用
 * **BitMap** 位图, 按位做标记的图
 * **RoaringBitMap** 位图, 因为位图占用的内存太大, 对于稀疏位图会更小内存
 * **TimerWheel** 计时器轮, 模仿时钟的高效定时器组件
 * **CircularBuffer** 环形Buffer组件, 适用于内存限定较严格的, 设置不超过缓存值的环形结构
 * **RBTree** 红黑村, 高效的排序树, 可用于做定时器组件
+* **FixedVec** 模拟指针的可变长数组
 
 # lru 全称是Least Recently Used，即最近最久未使用的意思。
 每次元素访问将其更新到列表的最前，时间复杂度为O(1)。当达到容量限制时将淘汰双向列表中的链尾数据
@@ -202,3 +208,8 @@ fn main() {
     assert!(timer.is_empty());
 }
 ```
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=tickbh/algorithm-rs&type=Date)](https://star-history.com/#tickbh/algorithm-rs&Date)
