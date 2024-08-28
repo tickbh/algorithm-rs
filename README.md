@@ -210,6 +210,27 @@ fn main() {
 ```
 
 
+# 添加宏支持, 可快速的缓存函数的结果
+
+
+```rust
+use algorithm::LruCache;
+use algorithm_macro::cache;
+
+#[cache(LruCache : LruCache::new(20))]
+#[cache_cfg(ignore_args = call_count)]
+#[cache_cfg(thread)]
+fn fib(x: u64, call_count: &mut u32) -> u64 {
+    *call_count += 1;
+    if x <= 1 {
+        1
+    } else {
+        fib(x - 1, call_count) + fib(x - 2, call_count)
+    }
+}
+```
+如此就可以快速将函数的执行结果进行缓存加速.
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=tickbh/algorithm-rs&type=Date)](https://star-history.com/#tickbh/algorithm-rs&Date)

@@ -1,3 +1,6 @@
+[workspace]
+members = ["algorithm-macro"]
+
 [package]
 name = "algorithm"
 version = "0.1.7"
@@ -11,12 +14,15 @@ keywords = ["arc", "lru", "lfu", "timerwheel", "slab"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static="1.4.0"
+lazy_static="1.5.0"
 hashbrown="0.14"
+
+[dependencies.algorithm-macro]
+path = "algorithm-macro"
 
 [dev-dependencies]
 rand="0.8.5"
-libc="0.2"
+libc="0.2.158"
 slab = "0.4.9"
 
 [profile.release]

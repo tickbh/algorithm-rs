@@ -1128,17 +1128,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> LfuCache<K, V, S> {
             }
         }
     }
-
-    // fn _pop_one(keys: &mut LruCache<KeyRef<K>, (), DefaultHasher>) -> Option<KeyRef<K>> {
-    //     keys.pop_usual().map(|(k, _)| k)
-    //     // let k = if let Some(k) = keys.iter().next() {
-    //     //     KeyRef { k: k.k }
-    //     // } else {
-    //     //     return None;
-    //     // };
-    //     // keys.remove(&k);
-    //     // Some(k)
-    // }
 }
 
 

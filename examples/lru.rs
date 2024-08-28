@@ -10,6 +10,8 @@ fn run_ttl() {
     assert_eq!(lru.get("help"), None);
     assert_eq!(lru.len(), 0);
 }
+
+
 fn main() {
     let mut lru = LruCache::new(3);
     lru.insert("now", "ok");
