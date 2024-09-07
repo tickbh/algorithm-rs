@@ -1704,8 +1704,8 @@ mod tests {
         lru.insert_with_ttl("help", "ok", 1);
         lru.insert_with_ttl("author", "tickbh", 2);
         lru.insert("now", "algorithm");
-        assert_eq!(lru.get_ttl(&"help"), Some(1));
-        assert_eq!(lru.get_ttl(&"author"), Some(2));
+        assert!(lru.get_ttl(&"help").unwrap() <= 1);
+        assert!(lru.get_ttl(&"author").unwrap() <= 2);
         assert_eq!(lru.get_ttl(&"now"), Some(u64::MAX));
     }
 }

@@ -8,6 +8,8 @@ mod tree;
 mod map;
 mod timer;
 mod arr;
+pub mod buf;
+
 pub use cache::{LruCache, LruKCache, LfuCache, ArcCache, Slab, Reinit};
 pub use tree::RBTree;
 pub use map::{BitMap, RoaringBitMap};

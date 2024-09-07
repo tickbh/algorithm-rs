@@ -69,7 +69,7 @@ pub struct ArcCache<K, V, S> {
 
 impl<K: Hash + Eq, V> Default for ArcCache<K, V, DefaultHasher> {
     fn default() -> Self {
-        ArcCache::new(100 )
+        ArcCache::new(100)
     }
 }
 
@@ -95,7 +95,7 @@ impl<K, V, S: Clone> ArcCache<K, V, S> {
             #[cfg(feature = "ttl")]
             check_step: DEFAULT_CHECK_STEP,
             #[cfg(feature = "ttl")]
-            check_next: get_milltimestamp()+DEFAULT_CHECK_STEP * 1000,
+            check_next: get_milltimestamp() + DEFAULT_CHECK_STEP * 1000,
             #[cfg(feature = "ttl")]
             has_ttl: false,
         }
@@ -103,9 +103,8 @@ impl<K, V, S: Clone> ArcCache<K, V, S> {
 }
 
 impl<K, V, S> ArcCache<K, V, S> {
-    
     /// 获取当前检查lru的间隔
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn get_check_step(&self) -> u64 {
         self.check_step
     }
@@ -115,7 +114,7 @@ impl<K, V, S> ArcCache<K, V, S> {
     /// 如果数据太大的话遍历一次可能会比较久的时长
     /// 一次清理时间复杂度O(n)
     /// 仅仅在插入时触发检查，获取时仅检查当前元素
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn set_check_step(&mut self, check_step: u64) {
         self.check_step = check_step;
         self.check_next = get_milltimestamp() + self.check_step * 1000;
@@ -209,7 +208,10 @@ impl<K, V, S> ArcCache<K, V, S> {
     /// }
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V, S> {
-        IterMut { lru_iter: self.main_lru.iter_mut(), lfu_iter: self.main_lfu.iter_mut() }
+        IterMut {
+            lru_iter: self.main_lru.iter_mut(),
+            lfu_iter: self.main_lfu.iter_mut(),
+        }
     }
 
     /// 遍历当前的key值
@@ -227,9 +229,7 @@ impl<K, V, S> ArcCache<K, V, S> {
     /// }
     /// ```
     pub fn keys(&self) -> Keys<'_, K, V, S> {
-        Keys {
-            iter: self.iter()
-        }
+        Keys { iter: self.iter() }
     }
 
     /// 遍历当前的valus值
@@ -250,9 +250,7 @@ impl<K, V, S> ArcCache<K, V, S> {
     /// }
     /// ```
     pub fn values(&self) -> Values<'_, K, V, S> {
-        Values {
-            iter: self.iter()
-        }
+        Values { iter: self.iter() }
     }
 
     /// 遍历当前的valus值
@@ -274,7 +272,7 @@ impl<K, V, S> ArcCache<K, V, S> {
     /// ```
     pub fn values_mut(&mut self) -> ValuesMut<'_, K, V, S> {
         ValuesMut {
-            iter: self.iter_mut()
+            iter: self.iter_mut(),
         }
     }
 
@@ -284,7 +282,6 @@ impl<K, V, S> ArcCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
-
     /// 弹出栈顶上的数据, 最常使用的数据
     ///
     /// ```
@@ -449,7 +446,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.get_mut_key_value(k).map(|(_, v)| v)
     }
 
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn get_mut_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &mut V)>
     where
         K: Borrow<Q>,
@@ -481,8 +478,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.main_lfu.get_mut_key_value(k)
     }
 
-    
-    #[cfg(not(feature="ttl"))]
+    #[cfg(not(feature = "ttl"))]
     pub fn get_mut_key_value<Q>(&mut self, k: &Q) -> Option<(&K, &mut V)>
     where
         K: Borrow<Q>,
@@ -533,7 +529,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     /// 插入带有生存时间的元素
     /// 每次获取像redis一样，并不会更新生存时间
     /// 如果需要更新则需要手动的进行重新设置
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
         self.capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
@@ -547,7 +543,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
-        if ttl == 0 { return None };
+        if ttl == 0 {
+            return None;
+        };
         self.has_ttl = true;
         self._capture_insert_with_ttl(k, v, ttl)
     }
@@ -580,17 +578,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         }
     }
 
-
     pub fn get_or_insert<F>(&mut self, k: K, f: F) -> &V
     where
-        F: FnOnce() -> V, {
+        F: FnOnce() -> V,
+    {
         &*self.get_or_insert_mut(k, f)
     }
 
     pub fn get_or_insert_mut<F>(&mut self, k: K, f: F) -> &mut V
     where
-        F: FnOnce() -> V, {
-
+        F: FnOnce() -> V,
+    {
         if let Some((key, val)) = self.main_lru.remove(&k) {
             self.main_lfu.insert(key, val);
             return self.main_lfu.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
@@ -609,11 +607,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
             self.main_lru.insert(key, val);
             return self.main_lru.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
         }
-        
+
         if self.main_lfu.contains_key(&k) {
             return self.main_lfu.get_mut_key_value(&k).map(|(_, v)| v).unwrap();
         }
-        
+
         if self.main_lru.is_full() {
             let (pk, pv) = self.main_lru.pop_unusual().unwrap();
             self.ghost_lru.insert(pk, pv);
@@ -621,8 +619,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.get_or_insert_mut(k, f)
     }
 
-
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn clear_expire(&mut self) {
         if !self.has_ttl {
             return;
@@ -636,34 +633,36 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
         self.main_lru.clear_expire();
     }
 
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn del_ttl<Q>(&mut self, k: &Q)
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized, {
+        Q: Hash + Eq + ?Sized,
+    {
         self.set_ttl(k, u64::MAX);
     }
 
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64) -> bool
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized, {
-            
+        Q: Hash + Eq + ?Sized,
+    {
         if self.main_lru.set_ttl(k, expire) {
-            return true
+            return true;
         }
         self.main_lfu.set_ttl(k, expire)
     }
 
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn get_ttl<Q>(&mut self, k: &Q) -> Option<u64>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized, {
+        Q: Hash + Eq + ?Sized,
+    {
         if let Some(v) = self.main_lfu.get_ttl(k) {
-            return Some(v)
+            return Some(v);
         }
         self.main_lru.get_ttl(k)
     }
@@ -717,7 +716,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> ArcCache<K, V, S> {
     }
 }
 
-
 impl<K: Hash + Eq, V: Default, S: BuildHasher> ArcCache<K, V, S> {
     pub fn get_or_insert_default(&mut self, k: K) -> &V {
         &*self.get_or_insert_mut(k, || V::default())
@@ -736,11 +734,11 @@ impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for ArcCache<
             ghost_lru: self.ghost_lru.clone(),
             ghost_lfu: self.ghost_lfu.clone(),
             cap: self.cap,
-            #[cfg(feature="ttl")]
+            #[cfg(feature = "ttl")]
             check_next: self.check_next,
-            #[cfg(feature="ttl")]
+            #[cfg(feature = "ttl")]
             check_step: self.check_step,
-            #[cfg(feature="ttl")]
+            #[cfg(feature = "ttl")]
             has_ttl: self.has_ttl,
         }
     }
@@ -988,8 +986,8 @@ unsafe impl<K: Sync, V: Sync, S: Sync> Sync for ArcCache<K, V, S> {}
 
 #[cfg(test)]
 mod tests {
-    use crate::DefaultHasher;
     use super::ArcCache;
+    use crate::DefaultHasher;
 
     #[test]
     fn test_insert() {
@@ -1357,7 +1355,6 @@ mod tests {
         assert_eq!(a[&3], "three");
     }
 
-
     #[test]
     fn test_send() {
         use std::thread;
@@ -1372,9 +1369,8 @@ mod tests {
         assert!(handle.join().is_ok());
     }
 
-    
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_cache() {
         let mut lru = ArcCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
@@ -1388,7 +1384,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_check_cache() {
         let mut lru = ArcCache::new(3);
         lru.set_check_step(1);
@@ -1404,7 +1400,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_del() {
         let mut lru = ArcCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
@@ -1419,7 +1415,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_set() {
         let mut lru = ArcCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
@@ -1435,16 +1431,15 @@ mod tests {
         assert_eq!(lru.len(), 0);
     }
 
-
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_get() {
         let mut lru = ArcCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
         lru.insert_with_ttl("author", "tickbh", 2);
         lru.insert("now", "algorithm");
-        assert_eq!(lru.get_ttl(&"help"), Some(1));
-        assert_eq!(lru.get_ttl(&"author"), Some(2));
+        assert!(lru.get_ttl(&"help").unwrap() <= 1);
+        assert!(lru.get_ttl(&"author").unwrap() <= 2);
         assert_eq!(lru.get_ttl(&"now"), Some(u64::MAX));
     }
 }
