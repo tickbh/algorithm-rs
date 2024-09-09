@@ -333,6 +333,10 @@ impl Bt for BinaryMut {
         self.as_slice()
     }
 
+    fn advance(&mut self, n: usize) {
+        self.inc_start(n);
+    }
+
     fn advance_chunk(&mut self, n: usize) -> &[u8] {
         let cursor = self.cursor;
         self.inc_start(n);
@@ -341,10 +345,6 @@ impl Bt for BinaryMut {
             &self.vec[cursor..end]
         }[..n];
         ret
-    }
-
-    fn advance(&mut self, n: usize) {
-        self.inc_start(n);
     }
 
     fn into_binary(self) -> Binary {

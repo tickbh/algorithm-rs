@@ -16,9 +16,9 @@ dependencies = [
 
 [[package]]
 name = "algorithm"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
- "algorithm-macro",
+ "algorithm-macro 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hashbrown",
  "lazy_static",
  "libc",
@@ -30,6 +30,18 @@ dependencies = [
 [[package]]
 name = "algorithm-macro"
 version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "algorithm-macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "424b05459baefbb9b11558a464acc1b773a76d036bcaeee98b9bc6658c4ea926"
 dependencies = [
  "lazy_static",
  "proc-macro2",

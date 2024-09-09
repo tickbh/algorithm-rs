@@ -15,8 +15,8 @@ use std::{
     mem,
 };
 
-use super::Binary;
 use super::panic_advance;
+use super::Binary;
 
 macro_rules! try_advance {
     ($flag:expr) => {
@@ -69,6 +69,45 @@ macro_rules! buf_get_impl {
     }};
 }
 
+macro_rules! buf_peek_impl {
+    ($this:ident, $typ:tt::$conv:tt) => {{
+        const SIZE: usize = mem::size_of::<$typ>();
+        // try to convert directly from the bytes
+        // this Option<ret> trick is to avoid keeping a borrow on self
+        // when advance() is called (mut borrow) and to call bytes() only once
+        let ret = $this
+            .chunk()
+            .get(..SIZE)
+            .map(|src| unsafe { $typ::$conv(*(src as *const _ as *const [_; SIZE])) });
+
+        if let Some(ret) = ret {
+            // if the direct conversion was possible, advance and return
+            $this.advance(SIZE);
+            return ret;
+        } else {
+            // if not we copy the bytes in a temp buffer then convert
+            let mut buf = [0; SIZE];
+            $this.peek_to_slice(&mut buf); // (do the advance)
+            return $typ::$conv(buf);
+        }
+    }};
+    (le => $this:ident, $typ:tt, $len_to_read:expr) => {{
+        debug_assert!(mem::size_of::<$typ>() >= $len_to_read);
+
+        // The same trick as above does not improve the best case speed.
+        // It seems to be linked to the way the method is optimised by the compiler
+        let mut buf = [0; (mem::size_of::<$typ>())];
+        $this.peek_to_slice(&mut buf[..($len_to_read)]);
+        return $typ::from_le_bytes(buf);
+    }};
+    (be => $this:ident, $typ:tt, $len_to_read:expr) => {{
+        debug_assert!(mem::size_of::<$typ>() >= $len_to_read);
+
+        let mut buf = [0; (mem::size_of::<$typ>())];
+        $this.peek_to_slice(&mut buf[mem::size_of::<$typ>() - ($len_to_read)..]);
+        return $typ::from_be_bytes(buf);
+    }};
+}
 pub trait Bt {
     /// 获取剩余数量
     fn remaining(&self) -> usize;
@@ -143,10 +182,25 @@ pub trait Bt {
         dst.len()
     }
 
+    fn peek_to_slice(&mut self, dst: &mut [u8]) -> usize {
+        assert!(self.remaining() >= dst.len());
+        unsafe {
+            let src = self.chunk();
+            std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+        }
+        dst.len()
+    }
+
     fn get_u8(&mut self) -> u8 {
         assert!(self.remaining() >= 1);
         let ret = self.chunk()[0];
         self.advance(1);
+        ret
+    }
+
+    fn peek_u8(&mut self) -> u8 {
+        assert!(self.remaining() >= 1);
+        let ret = self.chunk()[0];
         ret
     }
 
@@ -159,6 +213,12 @@ pub trait Bt {
         assert!(self.remaining() >= 1);
         let ret = self.chunk()[0] as i8;
         self.advance(1);
+        ret
+    }
+
+    fn peek_i8(&mut self) -> i8 {
+        assert!(self.remaining() >= 1);
+        let ret = self.chunk()[0] as i8;
         ret
     }
 
@@ -187,11 +247,14 @@ pub trait Bt {
         buf_get_impl!(self, u16::from_be_bytes);
     }
 
+    fn peek_u16(&mut self) -> u16 {
+        buf_peek_impl!(self, u16::from_be_bytes);
+    }
+
     fn try_get_u16(&mut self) -> io::Result<u16> {
         try_advance!(self.remaining() >= 2);
         Ok(self.get_u16())
     }
-
     /// Gets an unsigned 16 bit integer from `self` in little-endian byte order.
     ///
     /// The current position is advanced by 2.
@@ -210,6 +273,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_u16_le(&mut self) -> u16 {
         buf_get_impl!(self, u16::from_le_bytes);
+    }
+
+    fn peek_u16_le(&mut self) -> u16 {
+        buf_peek_impl!(self, u16::from_le_bytes);
     }
 
     fn try_get_u16_le(&mut self) -> io::Result<u16> {
@@ -240,6 +307,10 @@ pub trait Bt {
         buf_get_impl!(self, u16::from_ne_bytes);
     }
 
+    fn peek_u16_ne(&mut self) -> u16 {
+        buf_peek_impl!(self, u16::from_ne_bytes);
+    }
+
     fn try_get_u16_ne(&mut self) -> io::Result<u16> {
         try_advance!(self.remaining() >= 2);
         Ok(self.get_u16_ne())
@@ -263,6 +334,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_i16(&mut self) -> i16 {
         buf_get_impl!(self, i16::from_be_bytes);
+    }
+
+    fn peek_i16(&mut self) -> i16 {
+        buf_peek_impl!(self, i16::from_be_bytes);
     }
 
     fn try_get_i16(&mut self) -> io::Result<i16> {
@@ -289,7 +364,9 @@ pub trait Bt {
     fn get_i16_le(&mut self) -> i16 {
         buf_get_impl!(self, i16::from_le_bytes);
     }
-
+    fn peek_i16_le(&mut self) -> i16 {
+        buf_peek_impl!(self, i16::from_le_bytes);
+    }
     fn try_get_i16_le(&mut self) -> io::Result<i16> {
         try_advance!(self.remaining() >= 2);
         Ok(self.get_i16_le())
@@ -317,6 +394,10 @@ pub trait Bt {
         buf_get_impl!(self, i16::from_ne_bytes);
     }
 
+    fn peek_i16_ne(&mut self) -> i16 {
+        buf_peek_impl!(self, i16::from_ne_bytes);
+    }
+
     fn try_get_i16_ne(&mut self) -> io::Result<i16> {
         try_advance!(self.remaining() >= 2);
         Ok(self.get_i16_ne())
@@ -341,6 +422,10 @@ pub trait Bt {
         buf_get_impl!(self, u32::from_be_bytes);
     }
 
+    fn peek_u32(&mut self) -> u32 {
+        buf_peek_impl!(self, u32::from_be_bytes);
+    }
+
     fn try_get_u32(&mut self) -> io::Result<u32> {
         try_advance!(self.remaining() >= 4);
         Ok(self.get_u32())
@@ -363,6 +448,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_u32_le(&mut self) -> u32 {
         buf_get_impl!(self, u32::from_le_bytes);
+    }
+    
+    fn peek_u32_le(&mut self) -> u32 {
+        buf_peek_impl!(self, u32::from_le_bytes);
     }
 
     fn try_get_u32_le(&mut self) -> io::Result<u32> {
@@ -392,6 +481,10 @@ pub trait Bt {
         buf_get_impl!(self, u32::from_ne_bytes);
     }
 
+    fn peek_u32_ne(&mut self) -> u32 {
+        buf_peek_impl!(self, u32::from_ne_bytes);
+    }
+    
     fn try_get_u32_ne(&mut self) -> io::Result<u32> {
         try_advance!(self.remaining() >= 4);
         Ok(self.get_u32_ne())
@@ -414,6 +507,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_i32(&mut self) -> i32 {
         buf_get_impl!(self, i32::from_be_bytes);
+    }
+
+    fn peek_i32(&mut self) -> i32 {
+        buf_peek_impl!(self, i32::from_be_bytes);
     }
 
     fn try_get_i32(&mut self) -> io::Result<i32> {
@@ -439,6 +536,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_i32_le(&mut self) -> i32 {
         buf_get_impl!(self, i32::from_le_bytes);
+    }
+
+    fn peek_i32_le(&mut self) -> i32 {
+        buf_peek_impl!(self, i32::from_le_bytes);
     }
 
     fn try_get_i32_le(&mut self) -> io::Result<i32> {
@@ -469,6 +570,10 @@ pub trait Bt {
         buf_get_impl!(self, i32::from_ne_bytes);
     }
 
+    fn peek_i32_ne(&mut self) -> i32 {
+        buf_peek_impl!(self, i32::from_ne_bytes);
+    }
+
     fn try_get_i32_ne(&mut self) -> io::Result<i32> {
         try_advance!(self.remaining() >= 4);
         Ok(self.get_i32_ne())
@@ -491,6 +596,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_u64(&mut self) -> u64 {
         buf_get_impl!(self, u64::from_be_bytes);
+    }
+
+    fn peek_u64(&mut self) -> u64 {
+        buf_peek_impl!(self, u64::from_be_bytes);
     }
 
     fn try_get_u64(&mut self) -> io::Result<u64> {
@@ -516,6 +625,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_u64_le(&mut self) -> u64 {
         buf_get_impl!(self, u64::from_le_bytes);
+    }
+
+    fn peek_u64_le(&mut self) -> u64 {
+        buf_peek_impl!(self, u64::from_le_bytes);
     }
 
     fn try_get_u64_le(&mut self) -> io::Result<u64> {
@@ -546,6 +659,10 @@ pub trait Bt {
         buf_get_impl!(self, u64::from_ne_bytes);
     }
 
+    fn peek_u64_ne(&mut self) -> u64 {
+        buf_peek_impl!(self, u64::from_ne_bytes);
+    }
+
     fn try_get_u64_ne(&mut self) -> io::Result<u64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_u64_ne())
@@ -570,6 +687,10 @@ pub trait Bt {
         buf_get_impl!(self, i64::from_be_bytes);
     }
 
+    fn peek_i64(&mut self) -> i64 {
+        buf_peek_impl!(self, i64::from_be_bytes);
+    }
+
     fn try_get_i64(&mut self) -> io::Result<i64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_i64())
@@ -592,6 +713,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_i64_le(&mut self) -> i64 {
         buf_get_impl!(self, i64::from_le_bytes);
+    }
+
+    fn peek_i64_le(&mut self) -> i64 {
+        buf_peek_impl!(self, i64::from_le_bytes);
     }
 
     fn try_get_i64_le(&mut self) -> io::Result<i64> {
@@ -621,6 +746,10 @@ pub trait Bt {
         buf_get_impl!(self, i64::from_ne_bytes);
     }
 
+    fn peek_i64_ne(&mut self) -> i64 {
+        buf_peek_impl!(self, i64::from_ne_bytes);
+    }
+
     fn try_get_i64_ne(&mut self) -> io::Result<i64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_i64_ne())
@@ -646,6 +775,10 @@ pub trait Bt {
         buf_get_impl!(self, u128::from_be_bytes);
     }
 
+    fn peek_u128(&mut self) -> u128 {
+        buf_peek_impl!(self, u128::from_be_bytes);
+    }
+
     fn try_get_u128(&mut self) -> io::Result<u128> {
         try_advance!(self.remaining() >= 16);
         Ok(self.get_u128())
@@ -668,6 +801,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_u128_le(&mut self) -> u128 {
         buf_get_impl!(self, u128::from_le_bytes);
+    }
+
+    fn peek_u128_le(&mut self) -> u128 {
+        buf_peek_impl!(self, u128::from_le_bytes);
     }
 
     fn try_get_u128_le(&mut self) -> io::Result<u128> {
@@ -697,6 +834,10 @@ pub trait Bt {
         buf_get_impl!(self, u128::from_ne_bytes);
     }
 
+    fn peek_u128_ne(&mut self) -> u128 {
+        buf_peek_impl!(self, u128::from_ne_bytes);
+    }
+
     fn try_get_u128_ne(&mut self) -> io::Result<u128> {
         try_advance!(self.remaining() >= 16);
         Ok(self.get_u128_ne())
@@ -722,6 +863,10 @@ pub trait Bt {
         buf_get_impl!(self, i128::from_be_bytes);
     }
 
+    fn peek_i128(&mut self) -> i128 {
+        buf_peek_impl!(self, i128::from_be_bytes);
+    }
+
     fn try_get_i128(&mut self) -> io::Result<i128> {
         try_advance!(self.remaining() >= 16);
         Ok(self.get_i128())
@@ -745,6 +890,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_i128_le(&mut self) -> i128 {
         buf_get_impl!(self, i128::from_le_bytes);
+    }
+
+    fn peek_i128_le(&mut self) -> i128 {
+        buf_peek_impl!(self, i128::from_le_bytes);
     }
 
     fn try_get_i128_le(&mut self) -> io::Result<i128> {
@@ -774,6 +923,10 @@ pub trait Bt {
         buf_get_impl!(self, i128::from_ne_bytes);
     }
 
+    fn peek_i128_ne(&mut self) -> i128 {
+        buf_peek_impl!(self, i128::from_ne_bytes);
+    }
+
     fn try_get_i128_ne(&mut self) -> io::Result<i128> {
         try_advance!(self.remaining() >= 16);
         Ok(self.get_i128_ne())
@@ -798,6 +951,10 @@ pub trait Bt {
         buf_get_impl!(be => self, u64, nbytes);
     }
 
+    fn peek_uint(&mut self, nbytes: usize) -> u64 {
+        buf_peek_impl!(be => self, u64, nbytes);
+    }
+
     fn try_get_uint(&mut self, nbytes: usize) -> io::Result<u64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_uint(nbytes))
@@ -820,6 +977,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_uint_le(&mut self, nbytes: usize) -> u64 {
         buf_get_impl!(le => self, u64, nbytes);
+    }
+
+    fn peek_uint_le(&mut self, nbytes: usize) -> u64 {
+        buf_peek_impl!(le => self, u64, nbytes);
     }
 
     fn try_get_uint_le(&mut self, nbytes: usize) -> io::Result<u64> {
@@ -853,6 +1014,14 @@ pub trait Bt {
         }
     }
 
+    fn peek_uint_ne(&mut self, nbytes: usize) -> u64 {
+        if cfg!(target_endian = "big") {
+            self.peek_uint(nbytes)
+        } else {
+            self.peek_uint_le(nbytes)
+        }
+    }
+
     fn try_get_uint_ne(&mut self, nbytes: usize) -> io::Result<u64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_uint_ne(nbytes))
@@ -877,6 +1046,10 @@ pub trait Bt {
         buf_get_impl!(be => self, i64, nbytes);
     }
 
+    fn peek_int(&mut self, nbytes: usize) -> i64 {
+        buf_peek_impl!(be => self, i64, nbytes);
+    }
+
     fn try_get_int(&mut self, nbytes: usize) -> io::Result<i64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_int(nbytes))
@@ -899,6 +1072,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_int_le(&mut self, nbytes: usize) -> i64 {
         buf_get_impl!(le => self, i64, nbytes);
+    }
+
+    fn peek_int_le(&mut self, nbytes: usize) -> i64 {
+        buf_peek_impl!(le => self, i64, nbytes);
     }
 
     fn try_get_int_le(&mut self, nbytes: usize) -> io::Result<i64> {
@@ -932,6 +1109,14 @@ pub trait Bt {
         }
     }
 
+    fn peek_int_ne(&mut self, nbytes: usize) -> i64 {
+        if cfg!(target_endian = "big") {
+            self.peek_int(nbytes)
+        } else {
+            self.peek_int_le(nbytes)
+        }
+    }
+
     fn try_get_int_ne(&mut self, nbytes: usize) -> io::Result<i64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_int_ne(nbytes))
@@ -957,6 +1142,10 @@ pub trait Bt {
         f32::from_bits(Self::get_u32(self))
     }
 
+    fn peek_f32(&mut self) -> f32 {
+        f32::from_bits(Self::peek_u32(self))
+    }
+
     fn try_get_f32(&mut self) -> io::Result<f32> {
         try_advance!(self.remaining() >= 4);
         Ok(self.get_f32())
@@ -980,6 +1169,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_f32_le(&mut self) -> f32 {
         f32::from_bits(Self::get_u32_le(self))
+    }
+
+    fn peek_f32_le(&mut self) -> f32 {
+        f32::from_bits(Self::peek_u32_le(self))
     }
 
     fn try_get_f32_le(&mut self) -> io::Result<f32> {
@@ -1010,6 +1203,10 @@ pub trait Bt {
         f32::from_bits(Self::get_u32_ne(self))
     }
 
+    fn peek_f32_ne(&mut self) -> f32 {
+        f32::from_bits(Self::peek_u32_ne(self))
+    }
+
     fn try_get_f32_ne(&mut self) -> io::Result<f32> {
         try_advance!(self.remaining() >= 4);
         Ok(self.get_f32_ne())
@@ -1035,6 +1232,10 @@ pub trait Bt {
         f64::from_bits(Self::get_u64(self))
     }
 
+    fn peek_f64(&mut self) -> f64 {
+        f64::from_bits(Self::peek_u64(self))
+    }
+
     fn try_get_f64(&mut self) -> io::Result<f64> {
         try_advance!(self.remaining() >= 8);
         Ok(self.get_f64())
@@ -1058,6 +1259,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_f64_le(&mut self) -> f64 {
         f64::from_bits(Self::get_u64_le(self))
+    }
+
+    fn peek_f64_le(&mut self) -> f64 {
+        f64::from_bits(Self::peek_u64_le(self))
     }
 
     fn try_get_f64_le(&mut self) -> io::Result<f64> {
@@ -1086,6 +1291,10 @@ pub trait Bt {
     /// This function panics if there is not enough remaining data in `self`.
     fn get_f64_ne(&mut self) -> f64 {
         f64::from_bits(Self::get_u64_ne(self))
+    }
+
+    fn peek_f64_ne(&mut self) -> f64 {
+        f64::from_bits(Self::peek_u64_ne(self))
     }
 
     fn try_get_f64_ne(&mut self) -> io::Result<f64> {
