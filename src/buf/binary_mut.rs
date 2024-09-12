@@ -289,6 +289,13 @@ impl BinaryMut {
         }
     }
 
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        if self.wpos + 128 < self.vec.capacity() {
+            self.reserve(128);
+        }
+        &mut self.vec[self.wpos..]
+    }
+
     #[inline]
     pub unsafe fn try_resort_memory(&mut self) {
         if self.vec.len() < self.resort || self.cursor < self.resort / 2 {
