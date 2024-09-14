@@ -389,7 +389,7 @@ unsafe impl BtMut for BinaryMut {
         }
         unsafe {
             slice::from_raw_parts_mut(
-                self.as_mut_ptr().add(self.wpos) as *mut MaybeUninit<u8>,
+                self.vec.as_mut_ptr().add(self.wpos) as *mut MaybeUninit<u8>,
                 self.vec.capacity() - self.wpos,
             )
         }
