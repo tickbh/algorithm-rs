@@ -289,9 +289,20 @@ impl BinaryMut {
         }
     }
 
+    /// 获取可读且已初始化的数据
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::buf::{BinaryMut, Bt, BtMut};
+    ///
+    /// let mut buf = BinaryMut::with_capacity(0);
+    /// assert!(buf.data_mut().len() != 0);
+    ///
+    /// ```
     pub fn data_mut(&mut self) -> &mut [u8] {
-        if self.wpos + 128 < self.vec.capacity() {
-            self.reserve(128);
+        if self.wpos + 128 > self.vec.len() {
+            self.vec.resize(self.wpos + 128, 0);
         }
         &mut self.vec[self.wpos..]
     }
