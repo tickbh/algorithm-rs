@@ -1036,3 +1036,17 @@ unsafe impl BtMut for Vec<u8> {
     }
 
 }
+
+unsafe impl<T: BtMut> BtMut for &mut T {
+    fn remaining_mut(&self) -> usize {
+        T::remaining_mut(self)
+    }
+
+    unsafe fn advance_mut(&mut self, cnt: usize) {
+        T::advance_mut(self, cnt)
+    }
+
+    fn chunk_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        T::chunk_mut(self)
+    }
+}

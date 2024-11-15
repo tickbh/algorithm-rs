@@ -1364,3 +1364,26 @@ impl<T: AsRef<[u8]>> Bt for std::io::Cursor<T> {
         Binary::from(self.get_ref().as_ref()[(self.position() as usize)..].to_vec())
     }
 }
+
+
+impl<T: Bt> Bt for &mut T {
+    fn remaining(&self) -> usize {
+        T::remaining(self)
+    }
+
+    fn chunk(&self) -> &[u8] {
+        T::chunk(self)
+    }
+
+    fn advance(&mut self, n: usize) {
+        T::advance(self, n)
+    }
+
+    fn advance_chunk(&mut self, n: usize) -> &[u8] {
+        T::advance_chunk(self, n)
+    }
+
+    fn into_binary(self) -> Binary {
+        panic!("mut ref must not into")
+    }
+}

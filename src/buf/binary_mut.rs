@@ -396,6 +396,8 @@ unsafe impl BtMut for BinaryMut {
     }
 }
 
+
+
 impl AsRef<[u8]> for BinaryMut {
     #[inline]
     fn as_ref(&self) -> &[u8] {
@@ -553,6 +555,18 @@ impl Write for BinaryMut {
         Ok(())
     }
 }
+
+// impl Write for &mut BinaryMut {
+//     #[inline(always)]
+//     fn write(&mut self, buf: &[u8]) -> Result<usize> {
+//         self.put_slice(buf);
+//         Ok(buf.len())
+//     }
+
+//     fn flush(&mut self) -> Result<()> {
+//         Ok(())
+//     }
+// }
 
 impl Debug for BinaryMut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
