@@ -15,7 +15,7 @@ keywords = ["arc", "lru", "lfu", "timerwheel", "slab"]
 
 [dependencies]
 lazy_static="1.5.0"
-hashbrown="0.15.1"
+hashbrown="0.14.5"
 log="0.4.22"
 
 [dependencies.algorithm-macro]
