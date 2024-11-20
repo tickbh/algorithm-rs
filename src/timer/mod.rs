@@ -36,6 +36,8 @@ impl_primitive_timer!(usize);
 
 mod timer_rbtree;
 mod timer_wheel;
+mod stamp_timer;
 
 pub use timer_wheel::TimerWheel;
 pub use timer_rbtree::TimerRBTree;
+pub use stamp_timer::StampTimer;

@@ -2,6 +2,7 @@ use crate::HashMap;
 
 use crate::RBTree;
 use std::cmp::Ordering;
+use std::u64;
 use std::vec;
 
 use super::Timer;
@@ -52,12 +53,12 @@ impl PartialOrd for TreeKey {
 ///     timer.add_timer(150);
 ///     assert_eq!(timer.tick_first(), Some(1));
 ///     let val = timer.update_deltatime(30).unwrap();
-///     assert_eq!(val, vec![1, 30]);
+///     assert_eq!(val.iter().map(|(_, v)| *v).collect::<Vec<usize>>(), vec![1, 30]);
 ///     timer.add_timer(2);
 ///     let val = timer.update_deltatime(119).unwrap();
-///     assert_eq!(val, vec![2, 149]);
+///     assert_eq!(val.iter().map(|(_, v)| *v).collect::<Vec<usize>>(), vec![2, 149]);
 ///     let val = timer.update_deltatime(1).unwrap();
-///     assert_eq!(val, vec![150]);
+///     assert_eq!(val.iter().map(|(_, v)| *v).collect::<Vec<usize>>(), vec![150]);
 ///     assert!(timer.is_empty());
 /// }
 /// ```
@@ -71,6 +72,8 @@ pub struct TimerRBTree<T: Timer> {
 
     /// id记录
     next_timer_id: u64,
+    /// max id
+    max_timer_id: u64,
 }
 
 impl<T: Timer> TimerRBTree<T> {
@@ -79,7 +82,8 @@ impl<T: Timer> TimerRBTree<T> {
             tree: RBTree::new(),
             map: HashMap::new(),
             cur_step: 0,
-            next_timer_id: 0,
+            next_timer_id: 1,
+            max_timer_id: u64::MAX,
         }
     }
 
@@ -126,7 +130,32 @@ impl<T: Timer> TimerRBTree<T> {
         self.tree.clear();
         self.map.clear();
         self.cur_step = 0;
-        self.next_timer_id = 0;
+        self.next_timer_id = 1;
+    }
+
+    pub fn get_max_timerid(&self) -> u64 {
+        self.max_timer_id
+    }
+
+    pub fn set_max_timerid(&mut self, max: u64) {
+        self.max_timer_id = max;
+    }
+
+    fn get_next_timerid(&mut self) -> u64 {
+        let mut timer_id;
+        loop {
+            timer_id = self.next_timer_id;
+            if self.next_timer_id >= self.max_timer_id {
+                self.next_timer_id = 1;
+            } else {
+                self.next_timer_id = self.next_timer_id + 1;
+            }
+            
+            if !self.map.contains_key(&timer_id) {
+                break;
+            }
+        }
+        timer_id
     }
 
     /// 添加定时器元素
@@ -140,14 +169,16 @@ impl<T: Timer> TimerRBTree<T> {
     ///     assert_eq!(timer.len(), 1);
     /// }
     pub fn add_timer(&mut self, val: T) -> u64 {
-        let timer_id = self.next_timer_id;
-        self.next_timer_id = self.next_timer_id.wrapping_add(1);
-        let when = val.when();
-        self.tree.insert(TreeKey(when, timer_id), val);
-        self.map.insert(timer_id, when);
+        let timer_id = self.get_next_timerid();
+        self._add_timer(timer_id, val);
         timer_id
     }
 
+    fn _add_timer(&mut self, timer_id: u64, val: T) {
+        let when = val.when();
+        self.tree.insert(TreeKey(when, timer_id), val);
+        self.map.insert(timer_id, when);
+    }
     /// 删除指定的定时器，时间复杂度为O(logn)，
     ///
     /// # Examples
@@ -200,7 +231,7 @@ impl<T: Timer> TimerRBTree<T> {
     ///     let t = timer.add_timer(30);
     ///     *timer.get_mut_timer(&t).unwrap() = 33;
     ///     let val = timer.update_deltatime(30).unwrap();
-    ///     assert_eq!(val, vec![33]);
+    ///     assert_eq!(val.iter().map(|(_, v)| *v).collect::<Vec<usize>>(), vec![33]);
     /// }
     pub fn get_mut_timer(&mut self, timer_id: &u64) -> Option<&mut T> {
         if let Some(when) = self.map.get(timer_id) {
@@ -237,9 +268,9 @@ impl<T: Timer> TimerRBTree<T> {
     ///     let mut timer = TimerRBTree::new();
     ///     timer.add_timer(30);
     ///     let val = timer.update_deltatime(30).unwrap();
-    ///     assert_eq!(val, vec![30]);
+    ///     assert_eq!(val.iter().map(|(_, v)| *v).collect::<Vec<usize>>(), vec![30]);
     /// }
-    pub fn update_now(&mut self, now: u64) -> Option<Vec<T>> {
+    pub fn update_now(&mut self, now: u64) -> Option<Vec<(u64, T)>> {
         self.cur_step = now;
         let mut result = vec![];
         loop {
@@ -247,7 +278,7 @@ impl<T: Timer> TimerRBTree<T> {
                 if self.cur_step < val {
                     break;
                 }
-                result.push(self.tree.pop_first().map(|(_, e)| e).unwrap());
+                result.push(self.tree.pop_first().map(|(k, e)| (k.1, e)).unwrap());
             } else {
                 break;
             }
@@ -264,9 +295,9 @@ impl<T: Timer> TimerRBTree<T> {
     ///     let mut timer = TimerRBTree::new();
     ///     timer.add_timer(30);
     ///     let val = timer.update_deltatime(30).unwrap();
-    ///     assert_eq!(val, vec![30]);
+    ///     assert_eq!(val, vec![(1, 30)]);
     /// }
-    pub fn update_deltatime(&mut self, delta: u64) -> Option<Vec<T>> {
+    pub fn update_deltatime(&mut self, delta: u64) -> Option<Vec<(u64, T)>> {
         self.update_now(self.cur_step.wrapping_add(delta))
     }
 
@@ -280,32 +311,35 @@ impl<T: Timer> TimerRBTree<T> {
     ///     let mut timer = TimerRBTree::new();
     ///     timer.add_timer(30);
     ///     let mut idx = 0;
-    ///     timer.update_deltatime_with_callback(30, &mut |_, v| {
+    ///     let mut timer_id = 0;
+    ///     timer.update_deltatime_with_callback(30, &mut |_, id, v| {
+    ///         timer_id = id;
     ///         idx = v;
     ///         None
     ///     });
+    ///     assert_eq!(timer_id, 1);
     ///     assert_eq!(idx, 30);
     /// }
     pub fn update_deltatime_with_callback<F>(&mut self, delta: u64, f: &mut F)
     where
-        F: FnMut(&mut Self, T) -> Option<T>,
+        F: FnMut(&mut Self, u64, T) -> Option<(u64, T)>,
     {
         self.update_now_with_callback(self.cur_step.wrapping_add(delta), f)
     }
 
     pub fn update_now_with_callback<F>(&mut self, now: u64, f: &mut F)
     where
-        F: FnMut(&mut Self, T) -> Option<T>,
+        F: FnMut(&mut Self, u64, T) -> Option<(u64, T)>,
     {
         if let Some(result) = self.update_now(now) {
             let mut collect_result = vec![];
             for r in result.into_iter() {
-                if let Some(v) = (*f)(self, r) {
+                if let Some(v) = (*f)(self, r.0, r.1) {
                     collect_result.push(v);
                 }
             }
-            for v in collect_result.drain(..) {
-                self.add_timer(v);
+            for (timer_id, v) in collect_result.drain(..) {
+                self._add_timer(timer_id, v);
             }
         }
     }
