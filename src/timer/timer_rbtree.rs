@@ -170,11 +170,11 @@ impl<T: Timer> TimerRBTree<T> {
     /// }
     pub fn add_timer(&mut self, val: T) -> u64 {
         let timer_id = self.get_next_timerid();
-        self._add_timer(timer_id, val);
+        self.add_timer_by_id(timer_id, val);
         timer_id
     }
 
-    fn _add_timer(&mut self, timer_id: u64, val: T) {
+    pub fn add_timer_by_id(&mut self, timer_id: u64, val: T) {
         let when = val.when();
         self.tree.insert(TreeKey(when, timer_id), val);
         self.map.insert(timer_id, when);
@@ -339,7 +339,7 @@ impl<T: Timer> TimerRBTree<T> {
                 }
             }
             for (timer_id, v) in collect_result.drain(..) {
-                self._add_timer(timer_id, v);
+                self.add_timer_by_id(timer_id, v);
             }
         }
     }

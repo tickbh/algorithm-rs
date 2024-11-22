@@ -91,6 +91,12 @@ pub unsafe trait BtMut {
         }
         cnt
     }
+    
+    fn put_bool(&mut self, b: bool) -> usize {
+        let src = [if b { 1 } else { 0 }];
+        self.put_slice(&src);
+        1
+    }
 
     fn put_u8(&mut self, n: u8) -> usize {
         let src = [n];

@@ -451,7 +451,7 @@ impl<T: Timer> TimerWheel<T> {
                 }
             }
             for (timer_id, val) in collect_result.drain(..) {
-                self._add_timer(timer_id, val);
+                self.add_timer_by_id(timer_id, val);
             }
         }
     }
@@ -604,11 +604,11 @@ impl<T: Timer> TimerWheel<T> {
     pub fn add_timer(&mut self, val: T) -> u64 {
         debug_assert!(!self.greatest.is_null(), "必须设置时轮才能添加元素");
         let timer_id = self.get_next_timerid();
-        self._add_timer(timer_id, val);
+        self.add_timer_by_id(timer_id, val);
         timer_id
     }
 
-    fn _add_timer(&mut self, timer_id: u64, mut val: T) {
+    pub fn add_timer_by_id(&mut self, timer_id: u64, mut val: T) {
         let entry = Entry {
             when: val.when_mut().max(1),
             val,

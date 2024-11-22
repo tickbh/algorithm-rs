@@ -191,6 +191,24 @@ pub trait Bt {
         dst.len()
     }
 
+    fn get_bool(&mut self) -> bool {
+        assert!(self.remaining() >= 1);
+        let ret = self.chunk()[0];
+        self.advance(1);
+        ret == 1
+    }
+
+    fn peek_bool(&mut self) -> bool {
+        assert!(self.remaining() >= 1);
+        let ret = self.chunk()[0];
+        ret == 1
+    }
+
+    fn try_get_bool(&mut self) -> io::Result<bool> {
+        try_advance!(self.remaining() >= 1);
+        Ok(self.get_bool())
+    }
+
     fn get_u8(&mut self) -> u8 {
         assert!(self.remaining() >= 1);
         let ret = self.chunk()[0];
