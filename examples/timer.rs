@@ -2,9 +2,9 @@ use algorithm::TimerWheel;
 
 fn main() {
     let mut timer = TimerWheel::new();
-    timer.append_timer_wheel(12, 60 * 60, "HourWheel");
-    timer.append_timer_wheel(60, 60, "MinuteWheel");
-    timer.append_timer_wheel(60, 1, "SecondWheel");
+    timer.append_timer_wheel(60, "SecondWheel");
+    timer.append_timer_wheel(60, "MinuteWheel");
+    timer.append_timer_wheel(12, "HourWheel");
 
     timer.add_timer(30);
     assert_eq!(timer.get_delay_id(), 30);

@@ -13,7 +13,7 @@ pub mod buf;
 pub use cache::{LruCache, LruKCache, LfuCache, ArcCache, Slab, Reinit};
 pub use tree::RBTree;
 pub use map::{BitMap, RoaringBitMap};
-pub use timer::{TimerWheel, Timer, TimerRBTree, StampTimer};
+pub use timer::{TimerWheel, Timer, TimerRBTree, StampTimer, StepTimer};
 pub use arr::{CircularBuffer, FixedVec};
 pub use util::*;
 

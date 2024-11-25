@@ -14,10 +14,14 @@ struct Entry<T: Timer> {
 pub struct OneTimerWheel<T: Timer> {
     /// 当时指针指向的位置，如秒针指向3点钟方向
     index: u64,
-    /// 当前结构的容量，如表示秒的为60的容量
+    /// 当前结构的容量，比如60s可能有30个槽,每个都是2秒
     capation: u64,
+    /// 当前槽的个数
+    num: u64,
     /// 当前结构步长，如分钟就表示60s的
     step: u64,
+    /// 修正步长，当前的步长*基础步长
+    fix_step: u64,
     /// 当前槽位容纳的元素
     slots: Vec<Vec<Entry<T>>>,
     /// 当前轮结构的父轮，如当前是分的，那父轮为时轮
@@ -29,15 +33,17 @@ pub struct OneTimerWheel<T: Timer> {
 }
 
 impl<T: Timer> OneTimerWheel<T> {
-    pub fn new(capation: u64, step: u64, name: &'static str) -> Self {
+    pub fn new(num: u64, step: u64, one_step: u64, name: &'static str) -> Self {
         let mut slots = vec![];
-        for _ in 0..capation {
+        for _ in 0..num {
             slots.push(Vec::new());
         }
         Self {
             index: 0,
-            capation,
+            capation: num * step,
+            num,
             step,
+            fix_step: one_step * step,
             slots,
             parent: ptr::null_mut(),
             child: ptr::null_mut(),
@@ -46,7 +52,7 @@ impl<T: Timer> OneTimerWheel<T> {
     }
 
     pub fn clear(&mut self) {
-        for idx in 0..self.capation as usize {
+        for idx in 0..self.num as usize {
             self.slots[idx].clear();
         }
     }
@@ -70,7 +76,7 @@ impl<T: Timer> OneTimerWheel<T> {
     }
 
     fn del_timer(&mut self, timer_id: u64) -> Option<T> {
-        for i in 0..self.capation as usize {
+        for i in 0..self.num as usize {
             let mut found_idx = None;
             for (idx, val) in self.slots[i].iter().enumerate() {
                 if val.id == timer_id {
@@ -86,7 +92,7 @@ impl<T: Timer> OneTimerWheel<T> {
     }
 
     fn get_timer(&self, timer_id: &u64) -> Option<&T> {
-        for i in 0..self.capation as usize {
+        for i in 0..self.num as usize {
             for val in self.slots[i].iter() {
                 if &val.id == timer_id {
                     return Some(&val.val);
@@ -97,7 +103,7 @@ impl<T: Timer> OneTimerWheel<T> {
     }
 
     fn get_mut_timer(&mut self, timer_id: &u64) -> Option<&mut T> {
-        for i in 0..self.capation as usize {
+        for i in 0..self.num as usize {
             let mut found_idx = None;
             let v = &mut self.slots[i];
             for (idx, val) in v.iter().enumerate() {
@@ -114,47 +120,52 @@ impl<T: Timer> OneTimerWheel<T> {
     }
 
     fn add_step_timer(&mut self, entry: Entry<T>) {
-        let offset = entry.when % self.capation;
+        let offset = entry.when % self.num;
         self.add_timer_with_offset(entry, offset);
     }
 
     fn add_timer_with_offset(&mut self, entry: Entry<T>, offset: u64) {
-        if offset > self.capation * self.step {
-            let index = (self.index + self.capation - 1) % self.capation;
+        if offset > self.capation {
+            let index = (self.index + self.num - 1) % self.num;
             self.slots[index as usize].push(entry);
-        } else if offset < self.step && !self.child.is_null() {
+        } else if offset < self.fix_step && !self.child.is_null() {
             unsafe {
                 (*self.child).add_timer_with_offset(entry, offset);
             }
         } else {
             // 当前偏差值还在自己的容纳范围之前，做容错，排在最后处理位
             let index = (offset - 1) / self.step;
-            let index = (index + self.index) % self.capation;
+            let index = (index + self.index) % self.num;
             self.slots[index as usize].push(entry);
         }
     }
 
-    pub fn update_index(&mut self, offset: u64, remainder: u64, result: &mut Vec<(u64, T)>) -> (u64, u64) {
+    pub fn update_index(
+        &mut self,
+        offset: u64,
+        remainder: u64,
+        result: &mut Vec<(u64, T)>,
+    ) -> (u64, u64) {
         let next = self.index + offset;
         let mut all = 0;
         for idx in self.index..next {
-            if all > self.capation {
+            if all > self.num {
                 break;
             }
             all += 1;
-            let idx = idx % self.capation;
+            let idx = idx % self.num;
             let list = &mut self.slots[idx as usize];
             for val in list.drain(..) {
                 result.push((val.id, val.val));
             }
         }
-        self.index = next % self.capation;
+        self.index = next % self.num;
         if !self.child.is_null() {
             unsafe {
                 let list = &mut self.slots[self.index as usize];
                 for mut val in list.drain(..) {
                     val.when = (val.when % self.step).saturating_sub(remainder);
-                    if val.when <= 0 {
+                    if val.when == 0 {
                         result.push((val.id, val.val));
                     } else {
                         (*self.child).add_step_timer(val);
@@ -162,7 +173,7 @@ impl<T: Timer> OneTimerWheel<T> {
                 }
             }
         }
-        (next / self.capation, next % self.capation + remainder)
+        (next / self.num, next % self.num + remainder)
     }
 }
 
@@ -182,9 +193,9 @@ impl<T: Timer> OneTimerWheel<T> {
 /// use algorithm::TimerWheel;
 /// fn main() {
 ///     let mut timer = TimerWheel::new();
-///     timer.append_timer_wheel(12, 60 * 60, "HourWheel");
-///     timer.append_timer_wheel(60, 60, "MinuteWheel");
-///     timer.append_timer_wheel(60, 1, "SecondWheel");
+///     timer.append_timer_wheel(60, "SecondWheel");
+///     timer.append_timer_wheel(60, "MinuteWheel");
+///     timer.append_timer_wheel(12, "HourWheel");
 ///     timer.add_timer(30);
 ///     assert_eq!(timer.get_delay_id(), 30);
 ///     timer.add_timer(149);
@@ -212,7 +223,7 @@ pub struct TimerWheel<T: Timer> {
     /// 时轮的最小轮，以时钟为例就是秒针
     lessest: *mut OneTimerWheel<T>,
     /// 时轮的最小间隔，以时间为例就是秒
-    min_step: u64,
+    one_step: u64,
     /// 维护定时器id
     next_timer_id: u64,
     /// 限制最大的timer id
@@ -243,7 +254,7 @@ impl<T: Timer> TimerWheel<T> {
             next_timer_id: 1,
             max_timer_id: u64::MAX,
             delay_id: 0,
-            min_step: 0,
+            one_step: 1,
             all_deltatime: 0,
             len: 0,
         }
@@ -256,7 +267,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::<u64>::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     assert!(timer.is_empty());
     ///     timer.add_timer(1);
     ///     assert_eq!(timer.len(), 1);
@@ -291,7 +302,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::<u64>::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     assert!(timer.is_empty());
     ///     timer.add_timer(1);
     ///     timer.add_timer(2);
@@ -311,6 +322,13 @@ impl<T: Timer> TimerWheel<T> {
         self.len = 0;
     }
 
+    pub fn get_one_step(&self) -> u64 {
+        self.one_step
+    }
+
+    pub fn set_one_step(&mut self, step: u64) {
+        self.one_step = step.max(1);
+    }
     /// 添加计时器轮, 设置槽位和精度值, 名字用来辅助
     ///
     /// # Examples
@@ -319,24 +337,38 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(12, 60 * 60, "HourWheel");
-    ///     timer.append_timer_wheel(60, 60, "MinuteWheel");
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "MinuteWheel");
+    ///     timer.append_timer_wheel(12, "HourWheel");
     ///     timer.add_timer(30);
     /// }
-    pub fn append_timer_wheel(&mut self, slots: u64, step: u64, name: &'static str) {
+    pub fn append_timer_wheel(&mut self, slots: u64, name: &'static str) {
         debug_assert!(self.len == 0, "必须时轮为空才可改变时轮");
-        let one = Box::into_raw(Box::new(OneTimerWheel::new(slots, step, name)));
+        let step = if self.greatest.is_null() {
+            self.one_step
+        } else {
+            let mut now_step = 1;
+            let mut node = self.greatest;
+            unsafe {
+                while !node.is_null() {
+                    now_step *= (*node).capation;
+                    node = (*node).child;
+                }
+            }
+            now_step / self.one_step
+        };
+        let one = Box::into_raw(Box::new(OneTimerWheel::new(slots, step, self.one_step, name)));
         self.delay_id = self.delay_id.max(slots * step);
-        self.lessest = one;
-        if self.greatest.is_null() {
+        if self.lessest.is_null() {
+            self.lessest = one;
             self.greatest = one;
         } else {
             unsafe {
-                (*self.greatest).append(one);
+                let child = self.greatest;
+                (*one).append(child);
+                self.greatest = one;
             }
         }
-        self.min_step = step;
     }
 
     /// 计时器轮的递进时间
@@ -347,13 +379,13 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     ///     let val = timer.update_deltatime(30).unwrap();
     ///     assert_eq!(val, vec![(1, 30)]);
     /// }
     pub fn update_deltatime(&mut self, delta: u64) -> Option<Vec<(u64, T)>> {
-        debug_assert!(self.min_step > 0);
+        debug_assert!(self.one_step > 0);
         self.update_now(self.all_deltatime.wrapping_add(delta))
     }
 
@@ -365,26 +397,27 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     ///     let val = timer.update_deltatime(30).unwrap();
     ///     assert_eq!(val, vec![(1, 30)]);
     /// }
     pub fn update_now(&mut self, now: u64) -> Option<Vec<(u64, T)>> {
-        debug_assert!(self.min_step > 0);
+        debug_assert!(self.one_step > 0);
         self.all_deltatime = now;
-        let mut offset = self.all_deltatime / self.min_step;
+        let mut offset = self.all_deltatime / self.one_step;
         if offset < self.delay_id {
             return None;
         }
 
-        self.all_deltatime -= offset * self.min_step;
+        self.all_deltatime -= offset * self.one_step;
         let mut remainder = 0;
         let mut result = vec![];
         let mut wheel = self.lessest;
         while !wheel.is_null() {
             unsafe {
                 (offset, remainder) = (*wheel).update_index(offset, remainder, &mut result);
+                // println!("offset = {offset} remainder = {remainder}, wheel = {}", (*wheel).name);
                 if offset == 0 {
                     break;
                 }
@@ -404,7 +437,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     ///     let mut idx = 0;
     ///     timer.update_deltatime_with_callback(30, &mut |_, id, v| {
@@ -417,7 +450,7 @@ impl<T: Timer> TimerWheel<T> {
     where
         F: FnMut(&mut Self, u64, T) -> Option<(u64, T)>,
     {
-        debug_assert!(self.min_step > 0);
+        debug_assert!(self.one_step > 0);
         self.update_now_with_callback(self.all_deltatime.wrapping_add(delta), f);
     }
 
@@ -429,7 +462,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     ///     let mut idx = 0;
     ///     timer.update_deltatime_with_callback(30, &mut |_, _, v| {
@@ -442,7 +475,7 @@ impl<T: Timer> TimerWheel<T> {
     where
         F: FnMut(&mut Self, u64, T) -> Option<(u64, T)>,
     {
-        debug_assert!(self.min_step > 0);
+        debug_assert!(self.one_step > 0);
         if let Some(result) = self.update_now(now) {
             let mut collect_result = vec![];
             for r in result.into_iter() {
@@ -466,7 +499,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     ///     assert_eq!(timer.get_delay_id(), 30);
     /// }
@@ -475,7 +508,7 @@ impl<T: Timer> TimerWheel<T> {
         let mut wheel = self.lessest;
         'outer: while !wheel.is_null() {
             unsafe {
-                let (step, index, cap) = ((*wheel).step, (*wheel).index, (*wheel).capation);
+                let (step, index, cap) = ((*wheel).step, (*wheel).index, (*wheel).num);
                 for i in 0..cap {
                     let index = (index + i) % cap;
                     if !(*wheel).slots[index as usize].is_empty() {
@@ -487,7 +520,7 @@ impl<T: Timer> TimerWheel<T> {
                 wheel = (*wheel).parent;
             }
         }
-        self.delay_id = next_delay_id;
+        self.delay_id = next_delay_id / self.one_step;
     }
 
     /// 删除指定的定时器，时间复杂度为O(n)，
@@ -499,7 +532,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     let t = timer.add_timer(30);
     ///     timer.del_timer(t);
     ///     assert_eq!(timer.len(), 0);
@@ -527,7 +560,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     let t = timer.add_timer(30);
     ///     assert_eq!(timer.get_timer(&t), Some(&30));
     /// }
@@ -553,7 +586,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     let t = timer.add_timer(30);
     ///     *timer.get_mut_timer(&t).unwrap() = 33;
     ///     let val = timer.update_deltatime(30).unwrap();
@@ -572,7 +605,6 @@ impl<T: Timer> TimerWheel<T> {
         None
     }
 
-    
     pub fn get_max_timerid(&self) -> u64 {
         self.max_timer_id
     }
@@ -591,19 +623,19 @@ impl<T: Timer> TimerWheel<T> {
         timer_id
     }
 
-    /// 添加定时器元素
+    /// 添加定时器元素, 时间复杂度为O(1)
     /// # Examples
     ///
     /// ```
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     /// }
     pub fn add_timer(&mut self, val: T) -> u64 {
         debug_assert!(!self.greatest.is_null(), "必须设置时轮才能添加元素");
-        let timer_id = self.get_next_timerid();
+        let timer_id: u64 = self.get_next_timerid();
         self.add_timer_by_id(timer_id, val);
         timer_id
     }
@@ -614,7 +646,7 @@ impl<T: Timer> TimerWheel<T> {
             val,
             id: timer_id,
         };
-        self.delay_id = self.delay_id.min(entry.when);
+        self.delay_id = self.delay_id.min(entry.when / self.one_step);
         unsafe {
             (*self.greatest).add_timer(entry);
         }
@@ -628,7 +660,7 @@ impl<T: Timer> TimerWheel<T> {
     /// use algorithm::TimerWheel;
     /// fn main() {
     ///     let mut timer = TimerWheel::new();
-    ///     timer.append_timer_wheel(60, 1, "SecondWheel");
+    ///     timer.append_timer_wheel(60, "SecondWheel");
     ///     timer.add_timer(30);
     ///     assert_eq!(timer.get_delay_id(), 30);
     /// }

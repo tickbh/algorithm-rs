@@ -14,18 +14,18 @@ impl<T> StampTimer<T> {
         Self { val, duration, is_sec }
     }
 
-    pub fn new_second(val: T, interval: u64) -> Self {
+    pub fn new_second(val: T, duration: Duration) -> Self {
         Self {
             val,
-            duration: Duration::from_secs(interval),
+            duration,
             is_sec: true,
         }
     }
 
-    pub fn new_millis(val: T, interval: u64) -> Self {
+    pub fn new_millis(val: T, duration: Duration) -> Self {
         Self {
             val,
-            duration: Duration::from_millis(interval),
+            duration,
             is_sec: false,
         }
     }
