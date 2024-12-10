@@ -417,7 +417,6 @@ impl<T: Timer> TimerWheel<T> {
         while !wheel.is_null() {
             unsafe {
                 (offset, remainder) = (*wheel).update_index(offset, remainder, &mut result);
-                // println!("offset = {offset} remainder = {remainder}, wheel = {}", (*wheel).name);
                 if offset == 0 {
                     break;
                 }
