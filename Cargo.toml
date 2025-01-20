@@ -3,7 +3,7 @@ members = ["algorithm-macro"]
 
 [package]
 name = "algorithm"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
 description = "about algorithm data structure, now has ttl with lru/lru-k/lfu/arc and slab/rbtree/roaring_bitmap/timer_wheelss, 关于算法常用的数据结构"
@@ -14,17 +14,17 @@ keywords = ["arc", "lru", "lfu", "timerwheel", "slab"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static="1.5.0"
-hashbrown="0.14.5"
-log="0.4.22"
+lazy_static = "1.5.0"
+hashbrown = "0.15.2"
+log = "0.4.25"
 
 [dependencies.algorithm-macro]
 # path = "algorithm-macro"
 version = "0.1"
 
 [dev-dependencies]
-rand="0.8.5"
-libc="0.2.162"
+rand = "0.8.5"
+libc = "0.2.169"
 slab = "0.4.9"
 
 [profile.release]
@@ -33,5 +33,5 @@ debug = true
 
 [features]
 default = ["hashbrown", "ttl"]
-hashbrown=[]
-ttl=[]
+hashbrown = []
+ttl = []

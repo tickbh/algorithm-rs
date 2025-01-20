@@ -40,6 +40,18 @@ pub struct BinaryMut {
     resort: usize,
 }
 
+impl Clone for BinaryMut {
+    fn clone(&self) -> Self {
+        Self {
+            vec: self.vec.clone(),
+            cursor: self.cursor.clone(),
+            wpos: self.wpos.clone(),
+            mark: self.mark.clone(),
+            resort: self.resort.clone(),
+        }
+    }
+}
+
 impl BinaryMut {
     #[inline]
     pub fn with_capacity(n: usize) -> BinaryMut {
@@ -395,8 +407,6 @@ unsafe impl BtMut for BinaryMut {
         }
     }
 }
-
-
 
 impl AsRef<[u8]> for BinaryMut {
     #[inline]

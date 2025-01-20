@@ -27,6 +27,6 @@ pub use hashbrown::{HashMap, HashSet};
 pub use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "hashbrown")]
-pub type DefaultHasher = hashbrown::hash_map::DefaultHashBuilder;
+pub type DefaultHasher = hashbrown::DefaultHashBuilder;
 #[cfg(not(feature = "hashbrown"))]
 pub type DefaultHasher = std::collections::hash_map::RandomState;
