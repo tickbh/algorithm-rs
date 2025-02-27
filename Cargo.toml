@@ -3,7 +3,7 @@ members = ["algorithm-macro"]
 
 [package]
 name = "algorithm"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2021"
 authors = ["tickbh <tickdream125@hotmail.com>"]
 description = "about algorithm data structure, now has ttl with lru/lru-k/lfu/arc and slab/rbtree/roaring_bitmap/timer_wheelss, 关于算法常用的数据结构"
@@ -16,7 +16,7 @@ keywords = ["arc", "lru", "lfu", "timerwheel", "slab"]
 [dependencies]
 lazy_static = "1.5.0"
 hashbrown = "0.15.2"
-log = "0.4.25"
+log = "0.4.26"
 
 [dependencies.algorithm-macro]
 # path = "algorithm-macro"

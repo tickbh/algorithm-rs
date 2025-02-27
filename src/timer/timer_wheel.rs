@@ -128,13 +128,13 @@ impl<T: Timer> OneTimerWheel<T> {
         if offset > self.capation {
             let index = (self.index + self.num - 1) % self.num;
             self.slots[index as usize].push(entry);
-        } else if offset < self.fix_step && !self.child.is_null() {
+        } else if offset <= self.fix_step && !self.child.is_null() {
             unsafe {
                 (*self.child).add_timer_with_offset(entry, offset);
             }
         } else {
             // 当前偏差值还在自己的容纳范围之前，做容错，排在最后处理位
-            let index = (offset - 1) / self.step;
+            let index = (offset - 1) / self.fix_step;
             let index = (index + self.index) % self.num;
             self.slots[index as usize].push(entry);
         }
