@@ -11,13 +11,17 @@
 // Created Date: 2024/05/24 03:04:11
 
 use std::{
-    borrow::Borrow, hash::{BuildHasher, Hash}, 
+    borrow::Borrow,
     fmt::{self, Debug},
-    marker::PhantomData, mem, ops::{Index, IndexMut}, ptr::{self, NonNull}
+    hash::{BuildHasher, Hash},
+    marker::PhantomData,
+    mem,
+    ops::{Index, IndexMut},
+    ptr::{self, NonNull},
 };
 
-use crate::{HashMap, DefaultHasher};
-use super::{KeyRef, KeyWrapper};
+use crate::{DefaultHasher, HashMap};
+use crate::{KeyRef, KeyWrapper};
 
 #[cfg(feature = "ttl")]
 use crate::get_milltimestamp;
@@ -64,13 +68,11 @@ impl<K, V> LruKEntry<K, V> {
         }
     }
 
-    
     #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn is_expire(&self) -> bool {
         get_milltimestamp() >= self.expire
     }
-
 
     #[cfg(feature = "ttl")]
     #[inline(always)]
@@ -78,7 +80,6 @@ impl<K, V> LruKEntry<K, V> {
         time >= &self.expire
     }
 
-    
     #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn get_ttl(&self) -> u64 {
@@ -90,14 +91,13 @@ impl<K, V> LruKEntry<K, V> {
     }
 }
 
-
 /// 一个 LRU-K 缓存的实现, 接口参照Hashmap保持一致
 /// 当一个元素访问次数达到K次后, 将移入到新列表中, 防止被析构
 /// 设置容量之后将最大保持该容量大小的数据
 /// 后进的数据将会淘汰最久没有被访问的数据
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use algorithm::LruKCache;
 /// fn main() {
@@ -142,7 +142,7 @@ pub struct LruKCache<K, V, S> {
 
 impl<K: Hash + Eq, V> Default for LruKCache<K, V, DefaultHasher> {
     fn default() -> Self {
-        LruKCache::new(100 )
+        LruKCache::new(100)
     }
 }
 
@@ -185,14 +185,14 @@ impl<K, V, S> LruKCache<K, V, S> {
             #[cfg(feature = "ttl")]
             check_step: DEFAULT_CHECK_STEP,
             #[cfg(feature = "ttl")]
-            check_next: get_milltimestamp()+DEFAULT_CHECK_STEP * 1000,
+            check_next: get_milltimestamp() + DEFAULT_CHECK_STEP * 1000,
             #[cfg(feature = "ttl")]
             has_ttl: false,
         }
     }
 
     /// 获取当前检查lru的间隔
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn get_check_step(&self) -> u64 {
         self.check_step
     }
@@ -202,7 +202,7 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// 如果数据太大的话遍历一次可能会比较久的时长
     /// 一次清理时间复杂度O(n)
     /// 仅仅在插入时触发检查，获取时仅检查当前元素
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn set_check_step(&mut self, check_step: u64) {
         self.check_step = check_step;
         self.check_next = get_milltimestamp() + self.check_step * 1000;
@@ -214,7 +214,7 @@ impl<K, V, S> LruKCache<K, V, S> {
 
     /// 清理当前数据
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use algorithm::LruKCache;
     /// fn main() {
@@ -288,7 +288,7 @@ impl<K, V, S> LruKCache<K, V, S> {
     }
 
     /// 遍历当前的所有值
-    /// 
+    ///
     /// ```
     /// use algorithm::LruKCache;
     /// fn main() {
@@ -306,13 +306,13 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// }
     /// ```
     pub fn iter(&self) -> Iter<'_, K, V> {
-        Iter { 
-            len: self.map.len(), 
+        Iter {
+            len: self.map.len(),
             times_ptr: self.head_times,
             times_end: self.tail_times,
-            ptr: self.head, 
-            end: self.tail, 
-            phantom: PhantomData 
+            ptr: self.head,
+            end: self.tail,
+            phantom: PhantomData,
         }
     }
     /// 遍历当前的所有值, 可变
@@ -332,11 +332,18 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// }
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
-        IterMut { len: self.map.len(), times_ptr: self.head_times, times_end: self.tail_times, ptr: self.head, end: self.tail, phantom: PhantomData }
+        IterMut {
+            len: self.map.len(),
+            times_ptr: self.head_times,
+            times_end: self.tail_times,
+            ptr: self.head,
+            end: self.tail,
+            phantom: PhantomData,
+        }
     }
-    
+
     /// 遍历当前的key值
-    /// 
+    ///
     /// ```
     /// use algorithm::LruKCache;
     /// fn main() {
@@ -353,13 +360,11 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// }
     /// ```
     pub fn keys(&self) -> Keys<'_, K, V> {
-        Keys {
-            iter: self.iter()
-        }
+        Keys { iter: self.iter() }
     }
-    
+
     /// 遍历当前的valus值
-    /// 
+    ///
     /// ```
     /// use algorithm::LruKCache;
     /// fn main() {
@@ -376,9 +381,7 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// }
     /// ```
     pub fn values(&self) -> Values<'_, K, V> {
-        Values {
-            iter: self.iter()
-        }
+        Values { iter: self.iter() }
     }
 
     /// 遍历当前的valus值
@@ -400,7 +403,7 @@ impl<K, V, S> LruKCache<K, V, S> {
     /// ```
     pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
         ValuesMut {
-            iter: self.iter_mut()
+            iter: self.iter_mut(),
         }
     }
     pub fn hasher(&self) -> &S {
@@ -409,9 +412,8 @@ impl<K, V, S> LruKCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
-
     /// 排出当前数据
-    /// 
+    ///
     /// ```
     /// use algorithm::LruKCache;
     /// fn main() {
@@ -428,7 +430,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
     pub fn drain(&mut self) -> Drain<'_, K, V, S> {
         Drain { base: self }
     }
-
 
     /// 弹出栈顶上的数据, 最常使用的数据
     ///
@@ -500,7 +501,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         }
     }
 
-    
     /// 取出栈顶上的数据, 最近使用的数据
     ///
     /// ```
@@ -556,9 +556,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
     }
 
     pub fn contains_key<Q>(&mut self, k: &Q) -> bool
-        where
-            K: Borrow<Q>,
-            Q: Hash + Eq + ?Sized,
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
     {
         self.map.contains_key(KeyWrapper::from_ref(k))
     }
@@ -575,9 +575,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
     /// }
     /// ```
     pub fn raw_get<Q>(&self, k: &Q) -> Option<&V>
-        where
-            K: Borrow<Q>,
-            Q: Hash + Eq + ?Sized,
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
     {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
@@ -587,7 +587,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
             None => None,
         }
     }
-    
+
     /// 获取key值相对应的value值, 根据hash判定
     ///
     /// ```
@@ -648,7 +648,6 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         self.get_mut_key_value(k).map(|(_, v)| v)
     }
 
-    
     /// 获取key值相对应的value值, 根据hash判定, 可编辑被改变
     ///
     /// ```
@@ -667,18 +666,15 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         Q: Hash + Eq + ?Sized,
     {
         match self.get_node(k) {
-            Some(node) => {
-                unsafe { Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr())) }
-            }
+            Some(node) => unsafe { Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr())) },
             None => None,
         }
     }
 
-    
     pub(crate) fn get_node<Q>(&mut self, k: &Q) -> Option<*mut LruKEntry<K, V>>
-        where
-            K: Borrow<Q>,
-            Q: Hash + Eq + ?Sized,
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
     {
         match self.map.get(KeyWrapper::from_ref(k)) {
             Some(l) => {
@@ -692,7 +688,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
                         return None;
                     }
                 }
-                
+
                 self.attach(node);
                 Some(node)
             }
@@ -714,11 +710,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.capture_insert(k, v).map(|(_, v, _)| v)
     }
-    
+
     /// 插入带有生存时间的元素
     /// 每次获取像redis一样，并不会更新生存时间
     /// 如果需要更新则需要手动的进行重新设置
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<V> {
         self.capture_insert_with_ttl(k, v, ttl).map(|(_, v, _)| v)
@@ -732,14 +728,16 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
     #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn capture_insert_with_ttl(&mut self, k: K, v: V, ttl: u64) -> Option<(K, V, bool)> {
-        if ttl == 0 { return None };
+        if ttl == 0 {
+            return None;
+        };
         self.has_ttl = true;
         self._capture_insert_with_ttl(k, v, ttl)
     }
 
     #[allow(unused_variables)]
     fn _capture_insert_with_ttl(&mut self, k: K, mut v: V, ttl: u64) -> Option<(K, V, bool)> {
-        #[cfg(feature="ttl")]
+        #[cfg(feature = "ttl")]
         self.clear_expire();
 
         let key = KeyRef::new(&k);
@@ -749,9 +747,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
                 unsafe {
                     mem::swap(&mut *(*entry_ptr).val.as_mut_ptr(), &mut v);
                 }
-                #[cfg(feature="ttl")]
+                #[cfg(feature = "ttl")]
                 unsafe {
-                    (*entry_ptr).expire = ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
+                    (*entry_ptr).expire =
+                        ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
                 }
                 self.detach(entry_ptr);
                 self.attach(entry_ptr);
@@ -762,9 +761,10 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
                 let (val, entry) = self.replace_or_create_node(k, v);
                 let entry_ptr = entry.as_ptr();
                 self.attach(entry_ptr);
-                #[cfg(feature="ttl")]
+                #[cfg(feature = "ttl")]
                 unsafe {
-                    (*entry_ptr).expire = ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
+                    (*entry_ptr).expire =
+                        ttl.saturating_mul(1000).saturating_add(get_milltimestamp());
                 }
                 unsafe {
                     self.map
@@ -777,14 +777,15 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
 
     pub fn get_or_insert<F>(&mut self, k: K, f: F) -> &V
     where
-        F: FnOnce() -> V, {
+        F: FnOnce() -> V,
+    {
         &*self.get_or_insert_mut(k, f)
     }
 
-
     pub fn get_or_insert_mut<F>(&mut self, k: K, f: F) -> &mut V
     where
-        F: FnOnce() -> V, {
+        F: FnOnce() -> V,
+    {
         if let Some(l) = self.map.get(KeyWrapper::from_ref(&k)) {
             let node = l.as_ptr();
             self.detach(node);
@@ -804,8 +805,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         }
     }
 
-    
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn clear_expire(&mut self) {
         if !self.has_ttl {
             return;
@@ -843,21 +843,23 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
             }
         }
     }
-    
-    #[cfg(feature="ttl")]
+
+    #[cfg(feature = "ttl")]
     #[inline(always)]
     pub fn del_ttl<Q>(&mut self, k: &Q)
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized, {
+        Q: Hash + Eq + ?Sized,
+    {
         self.set_ttl(k, u64::MAX);
     }
 
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn set_ttl<Q>(&mut self, k: &Q, expire: u64) -> bool
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized, {
+        Q: Hash + Eq + ?Sized,
+    {
         if let Some(v) = self.get_node(&k) {
             self.has_ttl = true;
             unsafe {
@@ -869,11 +871,12 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         }
     }
 
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn get_ttl<Q>(&mut self, k: &Q) -> Option<u64>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized, {
+        Q: Hash + Eq + ?Sized,
+    {
         if let Some(v) = self.get_node(&k) {
             unsafe {
                 if (*v).expire == u64::MAX {
@@ -905,20 +908,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
         Q: Hash + Eq + ?Sized,
     {
         if let Some(node) = self.remove_node(k) {
-            unsafe {
-                Some((node.key.assume_init(), node.val.assume_init()))   
-            }
+            unsafe { Some((node.key.assume_init(), node.val.assume_init())) }
         } else {
             None
         }
     }
 
-    
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     pub fn remove_with_ttl<Q>(&mut self, k: &Q) -> Option<(K, V, u64)>
-        where
-            K: Borrow<Q>,
-            Q: Hash + Eq + ?Sized,
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
     {
         if let Some(node) = self.remove_node(k) {
             unsafe {
@@ -929,11 +929,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
             None
         }
     }
-    
+
     fn remove_node<Q>(&mut self, k: &Q) -> Option<LruKEntry<K, V>>
-        where
-            K: Borrow<Q>,
-            Q: Hash + Eq + ?Sized,
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
     {
         match self.map.remove(KeyWrapper::from_ref(k)) {
             Some(l) => unsafe {
@@ -958,7 +958,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
             };
             let old_node = self.map.remove(&old_key).unwrap();
             let node_ptr: *mut LruKEntry<K, V> = old_node.as_ptr();
-            unsafe  {
+            unsafe {
                 (*node_ptr).times = 0;
             }
             let replaced = unsafe {
@@ -1001,17 +1001,18 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruKCache<K, V, S> {
             while node != self.tail {
                 if !f(&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr()) {
                     let next = (*node).next;
-                    self.map.remove(&KeyRef { k: &*(*node).key.as_ptr()});
+                    self.map.remove(&KeyRef {
+                        k: &*(*node).key.as_ptr(),
+                    });
                     self.detach(node);
                     node = next;
                 } else {
                     node = (*node).next;
                 }
-            }    
+            }
         }
     }
 }
-
 
 impl<K: Hash + Eq, V: Default, S: BuildHasher> LruKCache<K, V, S> {
     pub fn get_or_insert_default(&mut self, k: K) -> &V {
@@ -1025,7 +1026,6 @@ impl<K: Hash + Eq, V: Default, S: BuildHasher> LruKCache<K, V, S> {
 
 impl<K: Clone + Hash + Eq, V: Clone, S: Clone + BuildHasher> Clone for LruKCache<K, V, S> {
     fn clone(&self) -> Self {
-        
         let mut new_lru = LruKCache::with_hasher(self.cap, self.times, self.map.hasher().clone());
 
         for (key, value) in self.iter().rev() {
@@ -1076,9 +1076,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> IntoIterator for LruKCache<K, V, S> {
 
     #[inline]
     fn into_iter(self) -> IntoIter<K, V, S> {
-        IntoIter {
-            base: self
-        }
+        IntoIter { base: self }
     }
 }
 
@@ -1121,7 +1119,7 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
         if self.len == 0 {
             return None;
         }
-        
+
         unsafe {
             let node = if (*self.end).prev != self.ptr {
                 self.end = (*self.end).prev;
@@ -1171,7 +1169,7 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
             Some((&*(*node).key.as_ptr(), &mut *(*node).val.as_mut_ptr()))
         }
     }
-    
+
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.len, Some(self.len))
     }
@@ -1182,7 +1180,7 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
         if self.len == 0 {
             return None;
         }
-        
+
         unsafe {
             let node = if (*self.end).prev != self.ptr {
                 self.end = (*self.end).prev;
@@ -1217,7 +1215,6 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> Iterator for Drain<'a, K, V, S> {
     }
 }
 
-
 impl<'a, K: Hash + Eq, V, S: BuildHasher> Drop for Drain<'a, K, V, S> {
     fn drop(&mut self) {
         self.base.clear();
@@ -1229,7 +1226,7 @@ pub struct Keys<'a, K, V> {
 }
 
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
-    type Item=&'a K;
+    type Item = &'a K;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(k, _)| k)
@@ -1239,13 +1236,12 @@ impl<'a, K, V> Iterator for Keys<'a, K, V> {
     }
 }
 
-
 pub struct Values<'a, K, V> {
     iter: Iter<'a, K, V>,
 }
 
 impl<'a, K, V> Iterator for Values<'a, K, V> {
-    type Item=&'a V;
+    type Item = &'a V;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(_, v)| v)
@@ -1254,7 +1250,6 @@ impl<'a, K, V> Iterator for Values<'a, K, V> {
         (self.iter.len, Some(self.iter.len))
     }
 }
-
 
 pub struct ValuesMut<'a, K, V> {
     iter: IterMut<'a, K, V>,
@@ -1273,7 +1268,7 @@ impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
 }
 
 impl<K: Hash + Eq, V> FromIterator<(K, V)> for LruKCache<K, V, DefaultHasher> {
-    fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> LruKCache<K, V, DefaultHasher> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> LruKCache<K, V, DefaultHasher> {
         let mut lru = LruKCache::new(2);
         lru.extend(iter);
         lru
@@ -1281,7 +1276,7 @@ impl<K: Hash + Eq, V> FromIterator<(K, V)> for LruKCache<K, V, DefaultHasher> {
 }
 
 impl<K: Hash + Eq, V> Extend<(K, V)> for LruKCache<K, V, DefaultHasher> {
-    fn extend<T: IntoIterator<Item=(K, V)>>(&mut self, iter: T) {
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         let iter = iter.into_iter();
         for (k, v) in iter {
             self.reserve(1);
@@ -1291,10 +1286,10 @@ impl<K: Hash + Eq, V> Extend<(K, V)> for LruKCache<K, V, DefaultHasher> {
 }
 
 impl<K, V, S> PartialEq for LruKCache<K, V, S>
-    where
-        K: Eq + Hash,
-        V: PartialEq,
-        S: BuildHasher
+where
+    K: Eq + Hash,
+    V: PartialEq,
+    S: BuildHasher,
 {
     fn eq(&self, other: &LruKCache<K, V, S>) -> bool {
         if self.len() != other.len() {
@@ -1307,11 +1302,12 @@ impl<K, V, S> PartialEq for LruKCache<K, V, S>
 }
 
 impl<K, V, S> Eq for LruKCache<K, V, S>
-    where
-        K: Eq + Hash,
-        V: PartialEq,
-        S: BuildHasher
-{}
+where
+    K: Eq + Hash,
+    V: PartialEq,
+    S: BuildHasher,
+{
+}
 
 impl<K, V, S> Debug for LruKCache<K, V, S>
 where
@@ -1323,11 +1319,10 @@ where
     }
 }
 
-
 impl<'a, K, V, S> Index<&'a K> for LruKCache<K, V, S>
 where
-    K: Hash+Eq,
-    S: BuildHasher
+    K: Hash + Eq,
+    S: BuildHasher,
 {
     type Output = V;
 
@@ -1337,11 +1332,10 @@ where
     }
 }
 
-
 impl<'a, K, V, S> IndexMut<&'a K> for LruKCache<K, V, S>
 where
-    K: Hash+Eq,
-    S: BuildHasher
+    K: Hash + Eq,
+    S: BuildHasher,
 {
     #[inline]
     fn index_mut(&mut self, index: &K) -> &mut V {
@@ -1349,16 +1343,13 @@ where
     }
 }
 
-
-
 unsafe impl<K: Send, V: Send, S: Send> Send for LruKCache<K, V, S> {}
 unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LruKCache<K, V, S> {}
 
-
 #[cfg(test)]
 mod tests {
-    use crate::DefaultHasher;
     use super::LruKCache;
+    use crate::DefaultHasher;
 
     #[test]
     fn test_insert() {
@@ -1733,7 +1724,6 @@ mod tests {
         assert_eq!(a.len(), 0);
     }
 
-
     #[test]
     fn test_send() {
         use std::thread;
@@ -1748,9 +1738,8 @@ mod tests {
         assert!(handle.join().is_ok());
     }
 
-    
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_cache() {
         let mut lru = LruKCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
@@ -1764,7 +1753,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_check_cache() {
         let mut lru = LruKCache::new(3);
         lru.set_check_step(1);
@@ -1780,7 +1769,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_del() {
         let mut lru = LruKCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
@@ -1795,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_set() {
         let mut lru = LruKCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);
@@ -1811,9 +1800,8 @@ mod tests {
         assert_eq!(lru.len(), 0);
     }
 
-
     #[test]
-    #[cfg(feature="ttl")]
+    #[cfg(feature = "ttl")]
     fn test_ttl_get() {
         let mut lru = LruKCache::new(3);
         lru.insert_with_ttl("help", "ok", 1);

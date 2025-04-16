@@ -23,7 +23,7 @@ use std::{
 use crate::{DefaultHasher, HashMap, LruCache};
 use lazy_static::lazy_static;
 
-use super::{KeyRef, KeyWrapper};
+use crate::{KeyRef, KeyWrapper};
 
 /// 避免hash表爆炸, 次数与频次映射
 fn get_freq_by_times(times: usize) -> u8 {

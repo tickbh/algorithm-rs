@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{HashMap, DefaultHasher};
-use super::{KeyRef, KeyWrapper};
+use crate::{KeyRef, KeyWrapper};
 
 #[cfg(feature = "ttl")]
 use crate::get_milltimestamp;

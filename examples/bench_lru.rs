@@ -39,7 +39,7 @@ fn build_freq_data(num: usize) -> Vec<(usize, usize)> {
         data.push((i, i + 1));
         let ridx = i / 4 + 1;
         for _ in 0..1 {
-            data.push((rand::random::<usize>() % ridx, 0));
+            data.push((rand::random::<u32>() as usize % ridx, 0));
         }
     }
     data
@@ -53,10 +53,10 @@ fn build_high_freq_data(num: usize) -> Vec<(usize, usize)> {
         data.push((i, i + 1));
         let ridx = (i / 4 + 1).min(1000);
         for _ in 0..10 {
-            data.push((rand::random::<usize>() % ridx, 0));
+            data.push((rand::random::<u32>() as usize % ridx, 0));
         }
         for _ in 0..5 {
-            data.push((i + num + rand::random::<usize>() % num, i + 1));
+            data.push((i + num + rand::random::<u32>() as usize % num, i + 1));
         }
     }
     data
