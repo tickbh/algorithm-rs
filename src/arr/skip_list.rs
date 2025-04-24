@@ -29,6 +29,21 @@ pub struct SkipNode<T> {
     levels: Vec<LevelType<T>>,
 }
 
+/// 跳表, 链表的一种扩展, 相对更复杂, 但是效率更高
+///
+/// # Examples
+///
+/// ```
+/// use algorithm::SkipList;
+/// fn main() {
+///     let mut val = SkipList::new();
+///     val.insert(1);
+///     val.insert(10);
+///     val.insert(100);
+///     assert_eq!(val.len(), 3);
+/// }
+/// ```
+#[derive(Debug)]
 pub struct SkipList<T: Default + PartialEq + PartialOrd> {
     length: usize,
     level: usize,
@@ -37,8 +52,8 @@ pub struct SkipList<T: Default + PartialEq + PartialOrd> {
     tail: *mut SkipNode<T>,
 }
 
-const MAX_LEVEL: usize = 32;
-const PERCENT: u16 = 25;
+const MAX_LEVEL: usize = 16;
+const PERCENT: u16 = 50;
 
 impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
     pub fn new() -> Self {
@@ -52,7 +67,7 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         sl
     }
 
-    pub fn free_all(&mut self) {
+    fn free_all(&mut self) {
         while !self.header.is_null() {
             unsafe {
                 let next = (*self.header).levels[0].forward;
@@ -63,6 +78,20 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         self.header = ptr::null_mut();
     }
 
+    /// 清除表内的所有内容
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::SkipList;
+    /// fn main() {
+    ///     let mut val = SkipList::new();
+    ///     val.insert(1);
+    ///     assert_eq!(val.len(), 1);
+    ///     val.clear();
+    ///     assert_eq!(val.len(), 0);
+    /// }
+    /// ```
     pub fn clear(&mut self) {
         self.free_all();
 
@@ -105,16 +134,25 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         level
     }
 
+    /// 插入内容, 将根据score放至合适的排序中
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::SkipList;
+    /// fn main() {
+    ///     let mut val = SkipList::new();
+    ///     val.insert(1);
+    ///     assert_eq!(val.len(), 1);
+    /// }
+    /// ```
     pub fn insert(&mut self, score: T) -> *mut SkipNode<T> {
         let mut update: [*mut SkipNode<T>; MAX_LEVEL] = [ptr::null_mut(); MAX_LEVEL];
         let mut rank = [0; MAX_LEVEL];
         let mut x = self.header;
-        for i in (0..self.level as usize).rev() {
-            rank[i] = if i == (self.level - 1) as usize {
-                0
-            } else {
-                rank[i + 1]
-            };
+        for i in (0..self.level).rev() {
+            println!("i = {}, level = {}", i, self.level);
+            rank[i] = if i == self.level - 1 { 0 } else { rank[i + 1] };
 
             unsafe {
                 while (*x).levels[i].forward != ptr::null_mut()
@@ -128,8 +166,10 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         }
 
         let level = Self::rand_level();
+        println!("level == {}", level);
         if level > self.level {
-            for i in level as usize..self.level as usize {
+            for i in self.level..level {
+                println!("aaaa i = {}, level = {}", i, self.level);
                 rank[i] = 0;
                 update[i] = self.header;
                 unsafe {
@@ -142,6 +182,7 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         x = Self::make_node(level, score);
         unsafe {
             for i in 0..level {
+                println!("i ==== {}", i);
                 (*x).levels[i].forward = (*update[i]).levels[i].forward;
                 (*update[i]).levels[i].forward = x;
 
@@ -169,6 +210,19 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         x
     }
 
+    /// 更新内容, 查找原值, 并更新新值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::SkipList;
+    /// fn main() {
+    ///     let mut val = SkipList::new();
+    ///     val.insert(1);
+    ///     val.update(&1, 2);
+    ///     assert_eq!(val.len(), 1);
+    /// }
+    /// ```
     pub fn update(&mut self, cur_score: &T, new_score: T) -> *mut SkipNode<T> {
         let mut update: [*mut SkipNode<T>; MAX_LEVEL] = [ptr::null_mut(); MAX_LEVEL];
         let mut rank = [0; MAX_LEVEL];
@@ -186,11 +240,10 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
             }
             x = (*x).levels[0].forward;
 
-            assert!(x != ptr::null_mut() && cur_score == &(*x).score);
+            assert!(!x.is_null() && cur_score == &(*x).score);
 
-            if ((*x).backward != ptr::null_mut() || (*(*x).backward).score < new_score)
-                && ((*x).levels[0].forward != ptr::null_mut()
-                    || (*(*x).levels[0].forward).score < new_score)
+            if ((*x).backward.is_null() || (*(*x).backward).score < new_score)
+                && ((*x).levels[0].forward.is_null() || (*(*x).levels[0].forward).score < new_score)
             {
                 (*x).score = new_score;
                 return x;
@@ -207,10 +260,10 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         unsafe {
             for i in 0..self.level {
                 if (*update[i]).levels[i].forward == x {
-                    (*update[i]).levels[i].span += (*x).levels[i].span - 1;
+                    (*update[i]).levels[i].span += (*x).levels[i].span.saturating_sub(1);
                     (*update[i]).levels[i].forward = (*x).levels[i].forward;
                 } else {
-                    (*update[i]).levels[i].span -= 1;
+                    (*update[i]).levels[i].span = (*update[i]).levels[i].span.saturating_sub(1);
                 }
             }
 
@@ -227,6 +280,23 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         }
     }
 
+    /// 获取排序值, 得到该值在序列中的排序
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::SkipList;
+    /// fn main() {
+    ///     let mut val = SkipList::new();
+    ///     val.insert(4);
+    ///     val.insert(2);
+    ///     val.insert(1);
+    ///     assert_eq!(val.get_rank(&1), 1);
+    ///     assert_eq!(val.get_rank(&4), 3);
+    ///     val.insert(3);
+    ///     assert_eq!(val.get_rank(&4), 4);
+    /// }
+    /// ```
     pub fn get_rank(&mut self, score: &T) -> usize {
         let mut x = self.header;
         let mut rank = 0;
@@ -246,7 +316,7 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         0
     }
 
-    fn find_by_rank(&mut self, rank: usize) -> *mut SkipNode<T> {
+    pub fn find_by_rank(&mut self, rank: usize) -> *mut SkipNode<T> {
         let mut x = self.header;
         let mut traversed = 0;
         for i in (0..self.level).rev() {
@@ -264,7 +334,25 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         ptr::null_mut()
     }
 
-    pub fn erase(&mut self, score: &T) -> bool {
+    /// 移除指定值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::SkipList;
+    /// fn main() {
+    ///     let mut val = SkipList::new();
+    ///     val.insert(4);
+    ///     val.insert(2);
+    ///     val.insert(1);
+    ///     assert_eq!(val.len(), 3);
+    ///     val.remove(&3);
+    ///     assert_eq!(val.len(), 3);
+    ///     val.remove(&4);
+    ///     assert_eq!(val.len(), 2);
+    /// }
+    /// ```
+    pub fn remove(&mut self, score: &T) -> bool {
         let mut update: [*mut SkipNode<T>; MAX_LEVEL] = [ptr::null_mut(); MAX_LEVEL];
         let mut x = self.header;
         unsafe {
@@ -287,7 +375,93 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
         return false;
     }
 
+    /// 获取长度
     pub fn len(&self) -> usize {
         self.length
+    }
+
+    /// 遍历值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::SkipList;
+    /// fn main() {
+    ///     let mut val = SkipList::new();
+    ///     val.insert(4);
+    ///     val.insert(2);
+    ///     val.insert(1);
+    ///     let mut iter = val.iter();
+    ///     assert_eq!(iter.next(), Some(&1));
+    ///     assert_eq!(iter.next(), Some(&2));
+    ///     assert_eq!(iter.next(), Some(&4));
+    ///     assert_eq!(iter.next(), None);
+    /// }
+    /// ```
+    pub fn iter(&self) -> Iter<'_, T> {
+        let first = unsafe { (*self.header).levels[0].forward };
+        Iter::new(self.length, first, self.tail)
+    }
+}
+
+pub struct Iter<'a, T: 'a + Default + PartialEq + PartialOrd> {
+    len: usize,
+    header: *mut SkipNode<T>,
+    tail: *mut SkipNode<T>,
+    data: PhantomData<&'a ()>,
+}
+
+impl<'a, T: Default + PartialEq + PartialOrd> Iter<'a, T> {
+    pub fn new(len: usize, header: *mut SkipNode<T>, tail: *mut SkipNode<T>) -> Self {
+        Self {
+            len,
+            header,
+            tail,
+            data: PhantomData,
+        }
+    }
+}
+
+impl<'a, T: Default + PartialEq + PartialOrd> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+
+        self.len -= 1;
+
+        unsafe {
+            let node = self.header;
+            self.header = (*self.header).levels[0].forward;
+            return Some(&(*node).score);
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, T: Default + PartialEq + PartialOrd> DoubleEndedIterator for Iter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+
+        self.len -= 1;
+
+        unsafe {
+            let node = self.tail;
+            self.tail = (*self.tail).backward;
+            return Some(&(*node).score);
+        }
+    }
+}
+
+impl<T: Default + PartialEq + PartialOrd> Drop for SkipList<T> {
+    fn drop(&mut self) {
+        self.clear();
     }
 }

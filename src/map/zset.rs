@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     hash::{Hash, Hasher},
-    mem,
+    mem, usize,
 };
 
 use hashbrown::HashMap;
@@ -49,7 +49,16 @@ pub struct ZSet<K: Hash + Eq> {
 }
 
 impl<K: Hash + Eq> ZSet<K> {
-    pub fn new(max_count: usize, reverse: bool) -> Self {
+    pub fn new() -> Self {
+        Self {
+            max_count: usize::MAX,
+            reverse: false,
+            zsl: SkipList::new(),
+            dict: HashMap::new(),
+        }
+    }
+
+    pub fn new_with(max_count: usize, reverse: bool) -> Self {
         Self {
             max_count,
             reverse,
@@ -93,13 +102,13 @@ impl<K: Hash + Eq> ZSet<K> {
         Q: Hash + Eq + ?Sized,
     {
         if let Some(v) = self.dict.remove(KeyWrapper::from_ref(k)) {
-            self.zsl.erase(unsafe { &(*v).score })
+            self.zsl.remove(unsafe { &(*v).score })
         } else {
             false
         }
     }
 
-    pub fn update<Q>(&mut self, key: K, mut score: isize) {
+    pub fn add_or_update(&mut self, key: K, mut score: isize) {
         if self.max_count == 0 || self.max_count == self.dict.len() {
             return;
         }
@@ -134,5 +143,11 @@ impl<K: Hash + Eq> ZSet<K> {
             return unsafe { (**v).score.score };
         }
         0
+    }
+}
+
+impl<K: Hash + Eq> Drop for ZSet<K> {
+    fn drop(&mut self) {
+        self.clear();
     }
 }
