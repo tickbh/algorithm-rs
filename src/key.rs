@@ -1,3 +1,4 @@
+use std::any::{type_name, TypeId};
 use std::borrow::Borrow;
 use std::hash::Hash;
 use std::ptr;
@@ -71,7 +72,10 @@ impl<Q: ?Sized + Hash> Hash for KeyWrapper<Q> {
 
 impl<Q: ?Sized + PartialEq> PartialEq for KeyWrapper<Q> {
     fn eq(&self, other: &Self) -> bool {
-        (self.0).eq(&other.0)
+        println!("aaa = {}", (self.0).eq(&other.0));
+        println!("aaabbb = {}", (&self.0).eq(&other.0));
+        println!("aaabbbccccc = {}", self.0 == other.0);
+        (&self.0).eq(&other.0)
     }
 }
 
@@ -83,6 +87,7 @@ where
     Q: ?Sized,
 {
     fn borrow(&self) -> &KeyWrapper<Q> {
+        println!("tttttttt = {} vv = {}", type_name::<K>(), type_name::<Q>());
         let key = unsafe { &*self.k }.borrow();
         KeyWrapper::from_ref(key)
     }

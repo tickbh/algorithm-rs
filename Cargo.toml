@@ -32,6 +32,6 @@ opt-level = 3
 debug = true
 
 [features]
-default = ["hashbrown", "ttl"]
+default = ["ttl"]
 hashbrown = []
 ttl = []

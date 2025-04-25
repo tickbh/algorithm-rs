@@ -4,7 +4,7 @@ use std::{
     mem, usize,
 };
 
-use hashbrown::HashMap;
+use std::collections::HashMap;
 
 use crate::{KeyRef, KeyWrapper, SkipList, SkipNode};
 
@@ -41,6 +41,23 @@ impl<K: Hash> PartialOrd for Context<K> {
     }
 }
 
+/// 一种可排序的Set类型
+///
+/// # Examples
+///
+/// ```
+/// use algorithm::ZSet;
+/// fn main() {
+///     let mut val = ZSet::new();
+///     val.add_or_update("aa", 10);
+///     val.add_or_update("bb", 12);
+///     assert_eq!(val.len(), 2);
+///     assert_eq!(val.rank(&"bb"), 0);
+///     val.add_or_update("bb", 9);
+///     assert_eq!(val.rank(&"bb"), 1);
+///     assert_eq!(val.len(), 2);
+/// }
+/// ```
 pub struct ZSet<K: Hash + Eq> {
     max_count: usize,
     reverse: bool,
@@ -124,6 +141,7 @@ impl<K: Hash + Eq> ZSet<K> {
         };
 
         let key_ref = KeyRef::new(unsafe { &*context.key.as_ptr() });
+
 
         if let Some(v) = self.dict.remove(&key_ref) {
             let ret = self.zsl.update(unsafe { &(*v).score }, context);
