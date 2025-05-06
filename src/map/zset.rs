@@ -1,11 +1,8 @@
-use std::{
-    borrow::Borrow,
-    hash::{Hash, Hasher},
-    mem, usize,
-};
-
 use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::{borrow::Borrow, hash::Hash, mem, usize};
 
+use crate::arr::SkipIter;
 use crate::{KeyRef, KeyWrapper, SkipList, SkipNode};
 
 struct Context<K: Hash> {
@@ -52,7 +49,7 @@ impl<K: Hash> PartialOrd for Context<K> {
 ///     val.add_or_update("aa", 10);
 ///     val.add_or_update("bb", 12);
 ///     assert_eq!(val.len(), 2);
-///     assert_eq!(val.rank(&"bb"), 0);
+///     assert_eq!(val.rank(&"bb"), 2);
 ///     val.add_or_update("bb", 9);
 ///     assert_eq!(val.rank(&"bb"), 1);
 ///     assert_eq!(val.len(), 2);
@@ -89,11 +86,42 @@ impl<K: Hash + Eq> ZSet<K> {
         self.dict.len()
     }
 
+    
+    /// 清除集合
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     assert_eq!(val.len(), 2);
+    ///     val.clear();
+    ///     assert_eq!(val.len(), 0);
+    /// }
+    /// ```
+    /// 
     pub fn clear(&mut self) {
         self.dict.clear();
         self.zsl.clear();
     }
 
+    /// 包含键值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     assert_eq!(val.contains_key(&"aa"), true);
+    /// }
+    /// ```
+    /// 
     pub fn contains_key<Q>(&mut self, k: &Q) -> bool
     where
         K: Borrow<Q>,
@@ -102,6 +130,21 @@ impl<K: Hash + Eq> ZSet<K> {
         self.dict.contains_key(KeyWrapper::from_ref(k))
     }
 
+    
+    /// 获取排序值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     assert_eq!(val.len(), 2);
+    /// 
+    /// }
+    /// ```
     pub fn rank<Q>(&mut self, k: &Q) -> usize
     where
         K: Borrow<Q>,
@@ -113,7 +156,22 @@ impl<K: Hash + Eq> ZSet<K> {
         0
     }
 
-    pub fn erase<Q>(&mut self, k: &Q) -> bool
+    /// 删除元素
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     assert_eq!(val.len(), 2);
+    ///     assert!(val.remove(&"bb"));
+    ///     assert_eq!(val.len(), 1);
+    /// }
+    /// ```
+    pub fn remove<Q>(&mut self, k: &Q) -> bool
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -125,6 +183,23 @@ impl<K: Hash + Eq> ZSet<K> {
         }
     }
 
+    /// 添加或者更新值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     assert_eq!(val.len(), 2);
+    ///     val.add_or_update("bb", 14);
+    ///     assert_eq!(val.len(), 2);
+    ///     assert_eq!(val.score(&"bb"), 14);
+    /// 
+    /// }
+    /// ```
     pub fn add_or_update(&mut self, key: K, mut score: isize) {
         if self.max_count == 0 || self.max_count == self.dict.len() {
             return;
@@ -140,18 +215,32 @@ impl<K: Hash + Eq> ZSet<K> {
             timestamp: 0,
         };
 
-        let key_ref = KeyRef::new(unsafe { &*context.key.as_ptr() });
-
-
+        let key_ref = KeyRef::new(context.key.as_ptr());
         if let Some(v) = self.dict.remove(&key_ref) {
             let ret = self.zsl.update(unsafe { &(*v).score }, context);
+            let key_ref = KeyRef::new(unsafe { (*ret).score.key.as_ptr() });
             self.dict.insert(key_ref, ret);
         } else {
             let ret = self.zsl.insert(context);
+            let key_ref = KeyRef::new(unsafe { (*ret).score.key.as_ptr() });
             self.dict.insert(key_ref, ret);
         }
     }
 
+    /// 获取score值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     assert_eq!(val.score(&"bb"), 12);
+    /// 
+    /// }
+    /// ```
     pub fn score<Q>(&mut self, k: &Q) -> isize
     where
         K: Borrow<Q>,
@@ -169,3 +258,10 @@ impl<K: Hash + Eq> Drop for ZSet<K> {
         self.clear();
     }
 }
+
+
+// pub struct Iter<'a, K: 'a + Default + PartialEq + PartialOrd> {
+//     len: usize,
+//     iter: SkipIter<&'a K>,
+//     data: PhantomData<&'a ()>,
+// }

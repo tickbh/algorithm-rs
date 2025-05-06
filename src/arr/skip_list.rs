@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ptr, usize::MAX};
+use std::{marker::PhantomData, ptr};
 
 struct LevelType<T> {
     pub forward: *mut SkipNode<T>,
@@ -27,6 +27,20 @@ pub struct SkipNode<T> {
     pub score: T,
     pub backward: *mut SkipNode<T>,
     levels: Vec<LevelType<T>>,
+}
+
+impl<T> SkipNode<T> {
+    pub fn rank(&self) -> usize {
+        let mut rank = 0;
+        let mut backward = self.backward;
+        unsafe {
+            while !backward.is_null() {
+                rank += (*backward).levels[0].span;
+                backward = (*backward).backward;
+            }
+        }
+        rank
+    }
 }
 
 /// 跳表, 链表的一种扩展, 相对更复杂, 但是效率更高
@@ -392,26 +406,26 @@ impl<T: Default + PartialEq + PartialOrd> SkipList<T> {
     ///     val.insert(2);
     ///     val.insert(1);
     ///     let mut iter = val.iter();
-    ///     assert_eq!(iter.next(), Some(&1));
-    ///     assert_eq!(iter.next(), Some(&2));
-    ///     assert_eq!(iter.next(), Some(&4));
+    ///     assert_eq!(iter.next(), Some((&1, 0)));
+    ///     assert_eq!(iter.next(), Some((&2, 1)));
+    ///     assert_eq!(iter.next(), Some((&4, 2)));
     ///     assert_eq!(iter.next(), None);
     /// }
     /// ```
-    pub fn iter(&self) -> Iter<'_, T> {
+    pub fn iter(&self) -> SkipIter<'_, T> {
         let first = unsafe { (*self.header).levels[0].forward };
-        Iter::new(self.length, first, self.tail)
+        SkipIter::new(self.length, first, self.tail)
     }
 }
 
-pub struct Iter<'a, T: 'a + Default + PartialEq + PartialOrd> {
+pub struct SkipIter<'a, T: 'a + Default + PartialEq + PartialOrd> {
     len: usize,
     header: *mut SkipNode<T>,
     tail: *mut SkipNode<T>,
     data: PhantomData<&'a ()>,
 }
 
-impl<'a, T: Default + PartialEq + PartialOrd> Iter<'a, T> {
+impl<'a, T: Default + PartialEq + PartialOrd> SkipIter<'a, T> {
     pub fn new(len: usize, header: *mut SkipNode<T>, tail: *mut SkipNode<T>) -> Self {
         Self {
             len,
@@ -422,8 +436,8 @@ impl<'a, T: Default + PartialEq + PartialOrd> Iter<'a, T> {
     }
 }
 
-impl<'a, T: Default + PartialEq + PartialOrd> Iterator for Iter<'a, T> {
-    type Item = &'a T;
+impl<'a, T: Default + PartialEq + PartialOrd> Iterator for SkipIter<'a, T> {
+    type Item = (&'a T, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
@@ -435,7 +449,7 @@ impl<'a, T: Default + PartialEq + PartialOrd> Iterator for Iter<'a, T> {
         unsafe {
             let node = self.header;
             self.header = (*self.header).levels[0].forward;
-            return Some(&(*node).score);
+            return Some((&(*node).score, (*node).rank()));
         }
     }
 
@@ -444,7 +458,7 @@ impl<'a, T: Default + PartialEq + PartialOrd> Iterator for Iter<'a, T> {
     }
 }
 
-impl<'a, T: Default + PartialEq + PartialOrd> DoubleEndedIterator for Iter<'a, T> {
+impl<'a, T: Default + PartialEq + PartialOrd> DoubleEndedIterator for SkipIter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
@@ -455,7 +469,7 @@ impl<'a, T: Default + PartialEq + PartialOrd> DoubleEndedIterator for Iter<'a, T
         unsafe {
             let node = self.tail;
             self.tail = (*self.tail).backward;
-            return Some(&(*node).score);
+            return Some((&(*node).score, (*node).rank()));
         }
     }
 }
