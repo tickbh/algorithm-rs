@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{borrow::Borrow, hash::Hash, mem, usize};
 
 use crate::arr::SkipIter;
@@ -38,7 +39,7 @@ impl<K: Hash> PartialOrd for Context<K> {
     }
 }
 
-/// 一种可排序的Set类型
+/// 一种可排序的Set类型, 可以高效的对评分进行排序, 
 ///
 /// # Examples
 ///
@@ -81,12 +82,11 @@ impl<K: Hash + Eq> ZSet<K> {
         }
     }
 
-    pub fn len(&mut self) -> usize {
+    pub fn len(&self) -> usize {
         assert!(self.dict.len() == self.zsl.len());
         self.dict.len()
     }
 
-    
     /// 清除集合
     ///
     /// # Examples
@@ -102,7 +102,7 @@ impl<K: Hash + Eq> ZSet<K> {
     ///     assert_eq!(val.len(), 0);
     /// }
     /// ```
-    /// 
+    ///
     pub fn clear(&mut self) {
         self.dict.clear();
         self.zsl.clear();
@@ -121,7 +121,7 @@ impl<K: Hash + Eq> ZSet<K> {
     ///     assert_eq!(val.contains_key(&"aa"), true);
     /// }
     /// ```
-    /// 
+    ///
     pub fn contains_key<Q>(&mut self, k: &Q) -> bool
     where
         K: Borrow<Q>,
@@ -130,7 +130,6 @@ impl<K: Hash + Eq> ZSet<K> {
         self.dict.contains_key(KeyWrapper::from_ref(k))
     }
 
-    
     /// 获取排序值
     ///
     /// # Examples
@@ -142,7 +141,7 @@ impl<K: Hash + Eq> ZSet<K> {
     ///     val.add_or_update("aa", 10);
     ///     val.add_or_update("bb", 12);
     ///     assert_eq!(val.len(), 2);
-    /// 
+    ///
     /// }
     /// ```
     pub fn rank<Q>(&mut self, k: &Q) -> usize
@@ -197,7 +196,7 @@ impl<K: Hash + Eq> ZSet<K> {
     ///     val.add_or_update("bb", 14);
     ///     assert_eq!(val.len(), 2);
     ///     assert_eq!(val.score(&"bb"), 14);
-    /// 
+    ///
     /// }
     /// ```
     pub fn add_or_update(&mut self, key: K, mut score: isize) {
@@ -209,10 +208,11 @@ impl<K: Hash + Eq> ZSet<K> {
             score = -score;
         }
 
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let context = Context {
             key: mem::MaybeUninit::new(key),
             score,
-            timestamp: 0,
+            timestamp: now.as_millis() as usize,
         };
 
         let key_ref = KeyRef::new(context.key.as_ptr());
@@ -238,7 +238,7 @@ impl<K: Hash + Eq> ZSet<K> {
     ///     val.add_or_update("aa", 10);
     ///     val.add_or_update("bb", 12);
     ///     assert_eq!(val.score(&"bb"), 12);
-    /// 
+    ///
     /// }
     /// ```
     pub fn score<Q>(&mut self, k: &Q) -> isize
@@ -251,6 +251,26 @@ impl<K: Hash + Eq> ZSet<K> {
         }
         0
     }
+
+    /// 遍历值
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use algorithm::ZSet;
+    /// fn main() {
+    ///     let mut val = ZSet::new();
+    ///     val.add_or_update("aa", 10);
+    ///     val.add_or_update("bb", 12);
+    ///     let mut iter = val.iter();
+    ///     assert_eq!(iter.next(), Some((&"aa", 0, 10)));
+    ///     assert_eq!(iter.next(), Some((&"bb", 1, 12)));
+    ///     assert_eq!(iter.next(), None);
+    /// }
+    /// ```
+    pub fn iter(&self) -> ZSetIter<K> {
+        ZSetIter::new(self.zsl.iter())
+    }
 }
 
 impl<K: Hash + Eq> Drop for ZSet<K> {
@@ -259,9 +279,40 @@ impl<K: Hash + Eq> Drop for ZSet<K> {
     }
 }
 
+pub struct ZSetIter<'a, K: 'a + Hash + Eq> {
+    iter: SkipIter<'a, Context<K>>,
+    data: PhantomData<&'a ()>,
+}
 
-// pub struct Iter<'a, K: 'a + Default + PartialEq + PartialOrd> {
-//     len: usize,
-//     iter: SkipIter<&'a K>,
-//     data: PhantomData<&'a ()>,
-// }
+impl<'a, T: Hash + Eq> ZSetIter<'a, T> {
+    fn new(iter: SkipIter<'a, Context<T>>) -> Self {
+        Self {
+            iter,
+            data: PhantomData,
+        }
+    }
+}
+
+impl<'a, T: Hash + Eq> Iterator for ZSetIter<'a, T> {
+    type Item = (&'a T, usize, isize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iter.next() {
+            None => return None,
+            Some((v, s)) => return Some((unsafe { v.key.assume_init_ref() }, s, v.score)),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T: Hash + Eq> DoubleEndedIterator for ZSetIter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self.iter.next_back() {
+            None => return None,
+            Some((v, s)) => return Some((unsafe { v.key.assume_init_ref() }, s, v.score)),
+        }
+    }
+}
